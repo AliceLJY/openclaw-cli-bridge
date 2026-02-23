@@ -51,8 +51,9 @@ async function handleCcCommand(ctx: any): Promise<{ text: string; isError?: bool
   const log = (globalThis as any).__ccBridgeLog ?? console;
   let args = (ctx.args || "").trim();
 
-  // DEBUG: 打印完整上下文，排查穿透问题
+  // DEBUG: 打印完整上下文
   log.info(`[cc-bridge] handler called | args="${args}" | commandBody="${ctx.commandBody}" | senderId=${ctx.senderId} | channel=${ctx.channel}`);
+  // ctx.to 格式: "channel:<discord-channel-id>"
 
   // 空命令 → 帮助
   if (!args) {
@@ -82,7 +83,9 @@ ${session}`
 
       const lines = data.sessions.map((s: any, i: number) => {
         const time = new Date(s.lastModified).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-        return `${i + 1}. ${s.topic}\n   \`${s.sessionId.slice(0, 8)}\` | ${time} | ${s.sizeKB}KB`;
+        // 清理 topic：去多余空白/换行，截断到 50 字符，防止超 Discord 2000 字限制被拆消息
+        const topic = (s.topic || "(no topic)").replace(/\s+/g, " ").trim().slice(0, 50) + (s.topic?.length > 50 ? "…" : "");
+        return `${i + 1}. ${topic}\n   \`${s.sessionId.slice(0, 8)}\` | ${time} | ${s.sizeKB}KB`;
       });
       const current = lastSessionId ? `\n当前: \`${lastSessionId.slice(0, 8)}...\`` : "\n当前无活跃会话";
       return { text: "📋 最近 CC 会话\n\n" + lines.join("\n\n") + current };
@@ -125,12 +128,16 @@ ${session}`
 
   // 默认：提交 CC 任务
   const prompt = args;
-  log.info(`[cc-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${lastSessionId ? ' [session:' + lastSessionId.slice(0, 8) + ']' : ' [新会话]'}`);
+
+  // 回调频道：优先用发送命令的频道（在哪问就在哪回），fallback 到配置的默认频道
+  const sourceChannel = ctx.to?.replace(/^channel:/, "") || "";
+  const callback = sourceChannel || CC_CHANNEL;
+  log.info(`[cc-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${lastSessionId ? ' [session:' + lastSessionId.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
     prompt,
     timeout: 600000,
-    callbackChannel: CC_CHANNEL,
+    callbackChannel: callback,
   };
   if (lastSessionId) body.sessionId = lastSessionId;
 
