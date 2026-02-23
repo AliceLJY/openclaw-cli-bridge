@@ -23,6 +23,7 @@
 let API_URL = "";
 let API_TOKEN = "";
 let CC_CHANNEL = "";
+let DISCORD_BOT_TOKEN = "";
 
 // ---- 工具结果 helper ----
 function text(data: unknown) {
@@ -139,6 +140,7 @@ ${session}`
     timeout: 600000,
     callbackChannel: callback,
   };
+  if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
   if (lastSessionId) body.sessionId = lastSessionId;
 
   try {
@@ -194,6 +196,7 @@ const ccCallTool = {
       timeout: (params.timeout as number) || 600000,
       callbackChannel: CC_CHANNEL,
     };
+    if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
     if (params.sessionId) body.sessionId = params.sessionId;
 
     try {
@@ -217,6 +220,7 @@ export function register(pluginApi: any) {
   API_URL = cfg.apiUrl || "http://host.docker.internal:3456";
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
+  DISCORD_BOT_TOKEN = cfg.discordBotToken || "";
 
   if (!API_TOKEN) log.warn("[cc-bridge] ⚠ apiToken not configured — API calls will fail");
   if (!CC_CHANNEL) log.warn("[cc-bridge] ⚠ callbackChannel not configured — results won't be delivered");

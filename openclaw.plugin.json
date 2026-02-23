@@ -1,7 +1,7 @@
 {
   "id": "cc-bridge",
   "name": "CC Bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Bridge Discord commands to Claude Code via task-api — zero agent tokens, zero noise",
   "author": "AliceLJY",
   "license": "MIT",
@@ -21,6 +21,10 @@
       "callbackChannel": {
         "type": "string",
         "description": "Discord channel ID where CC results are delivered"
+      },
+      "discordBotToken": {
+        "type": "string",
+        "description": "Discord bot token for this bot — CC results will be sent using this identity"
       }
     },
     "required": []
