@@ -67,7 +67,7 @@ CC Bridge also registers a `cc_call` tool for other channel agents. When an agen
 - [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) running locally with Task API enabled
 - Claude Code installed locally (with Max subscription or API key)
 
-> **作者环境**：MacBook Air M4 · Docker 运行 OpenClaw（Opus 4.6）· 本地 openclaw-worker + Claude Code
+> **作者环境**：MacBook Air M4 (16GB) · Docker 运行 OpenClaw bot · 本地 [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) 提供 Task API · Claude Code (Max subscription) · Bun 运行时
 
 ## Installation
 
@@ -125,6 +125,22 @@ OpenClaw's `matchPluginCommand` splits command name from arguments **by space**.
 **Solution**: All subcommands use independent ASCII names (`cc-recent`, `cc-now`, `cc-new`, `cc-resume`) following the pattern established by [HappyClaw](https://github.com/rwmjhb/happyclaw).
 
 > 框架用空格分割命令名和参数。`/cc最近`（连写、无空格）匹配不到 `/cc`，会穿透给 agent。解决方案：子命令用独立的 ASCII 命名，学自 HappyClaw 的设计模式。
+
+## What's Different from HappyClaw?
+
+[HappyClaw](https://github.com/rwmjhb/happyclaw) is a **PTY bridge** — it multiplexes local terminal sessions (Claude Code, Codex, Gemini CLI) and streams I/O to OpenClaw. CC Bridge takes a completely different approach:
+
+| | HappyClaw | CC Bridge |
+|--|-----------|-----------|
+| **Mechanism** | PTY terminal multiplexing | HTTP Task API |
+| **Scope** | Any CLI tool (Claude Code, Codex, Gemini) | Claude Code only (via openclaw-worker) |
+| **Session model** | Persistent PTY processes | Stateless API calls with session ID tracking |
+| **Unique feature** | Real-time terminal streaming | Auto-session continuation (just keep sending `/cc`) |
+| **Design** | General-purpose bridge | Purpose-built for Claude Code + Discord workflow |
+
+CC Bridge was born from a real daily workflow: controlling Claude Code from Discord on a phone while away from the desk. The **auto-session continuation** (no manual session ID juggling) and **dual-mode design** (slash commands for humans, `cc_call` tool for agents) came directly from dogfooding the tool.
+
+> CC Bridge 诞生于真实的日常场景：离开电脑时用手机 Discord 远程操控本地 Claude Code。**自动会话续接**（不用手动带 session ID，连着发 `/cc` 就行）和**双模式设计**（命令给人用、cc_call 工具给 agent 用）都是在实际使用中磨出来的。HappyClaw 教会了我 `registerCommand` 的正确姿势，而 CC Bridge 是在这个基础上针对 Claude Code + Discord 场景的独立实现。
 
 ## Ecosystem
 
