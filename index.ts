@@ -170,8 +170,9 @@ const ccCallTool = {
   description:
     "Submit a task to Claude Code via task-api. Returns immediately. " +
     "CC's output will be delivered DIRECTLY to the Discord channel via callback (not through you). " +
-    "For NEW tasks: provide only 'prompt'. " +
-    "For FOLLOW-UP in an existing session: provide both 'prompt' and 'sessionId'. " +
+    "IMPORTANT: Always pass 'channel' so the result is delivered to the CURRENT channel. " +
+    "For NEW tasks: provide 'prompt' and 'channel'. " +
+    "For FOLLOW-UP in an existing session: also provide 'sessionId'. " +
     "After calling this tool, tell the user '已提交，等 CC 回调' and STOP.",
   parameters: {
     type: "object" as const,
@@ -179,6 +180,10 @@ const ccCallTool = {
       prompt: {
         type: "string" as const,
         description: "The task or message to send to Claude Code",
+      },
+      channel: {
+        type: "string" as const,
+        description: "Discord channel ID where the result should be delivered (use the current channel ID)",
       },
       sessionId: {
         type: "string" as const,
@@ -192,10 +197,11 @@ const ccCallTool = {
     required: ["prompt"],
   },
   async execute(_id: string, params: Record<string, unknown>) {
+    const callback = (params.channel as string) || CC_CHANNEL;
     const body: Record<string, unknown> = {
       prompt: params.prompt,
       timeout: (params.timeout as number) || 600000,
-      callbackChannel: CC_CHANNEL,
+      callbackChannel: callback,
     };
     if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
     if (params.sessionId) body.sessionId = params.sessionId;
