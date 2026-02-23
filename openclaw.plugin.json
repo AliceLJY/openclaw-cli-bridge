@@ -1,0 +1,28 @@
+{
+  "id": "cc-bridge",
+  "name": "CC Bridge",
+  "version": "0.2.0",
+  "description": "Bridge Discord commands to Claude Code via task-api — zero agent tokens, zero noise",
+  "author": "AliceLJY",
+  "license": "MIT",
+  "entry": "./index.ts",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "apiUrl": {
+        "type": "string",
+        "default": "http://host.docker.internal:3456",
+        "description": "Task API base URL (openclaw-worker endpoint)"
+      },
+      "apiToken": {
+        "type": "string",
+        "description": "Task API auth token (from openclaw-worker config)"
+      },
+      "callbackChannel": {
+        "type": "string",
+        "description": "Discord channel ID where CC results are delivered"
+      }
+    },
+    "required": ["apiToken", "callbackChannel"]
+  }
+}

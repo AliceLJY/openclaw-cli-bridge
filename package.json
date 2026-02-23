@@ -1,0 +1,23 @@
+{
+  "name": "@openclaw/cc-bridge",
+  "version": "0.2.0",
+  "description": "Bridge Discord commands to Claude Code via task-api — zero agent tokens, zero noise",
+  "type": "module",
+  "main": "./index.ts",
+  "license": "MIT",
+  "author": "AliceLJY",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AliceLJY/openclaw-cc-bridge.git"
+  },
+  "keywords": [
+    "openclaw",
+    "claude-code",
+    "discord",
+    "bridge",
+    "plugin"
+  ],
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  }
+}
