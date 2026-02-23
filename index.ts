@@ -44,31 +44,33 @@ async function api(method: string, path: string, body?: unknown) {
   return fetch(`${API_URL}${path}`, opts);
 }
 
-// ---- 会话跟踪（自动续接上一轮） ----
-let lastSessionId: string | null = null;
+// ---- 会话跟踪（按频道隔离，每个频道独立 session） ----
+const channelSessions = new Map<string, string>();
 
 // ---- /cc 命令 handler ----
 async function handleCcCommand(ctx: any): Promise<{ text: string; isError?: boolean }> {
   const log = (globalThis as any).__ccBridgeLog ?? console;
   let args = (ctx.args || "").trim();
 
-  // DEBUG: 打印完整上下文
-  log.info(`[cc-bridge] handler called | args="${args}" | commandBody="${ctx.commandBody}" | senderId=${ctx.senderId} | channel=${ctx.channel}`);
-  // ctx.to 格式: "channel:<discord-channel-id>"
+  // 频道 key：按频道隔离 session
+  const channelKey = ctx.to?.replace(/^channel:/, "") || "default";
+  const lastSessionId = channelSessions.get(channelKey) || null;
+
+  log.info(`[cc-bridge] handler called | args="${args}" | channel=${channelKey.slice(0, 8)} | session=${lastSessionId?.slice(0, 8) || 'none'}`);
 
   // 空命令 → 帮助
   if (!args) {
     const session = lastSessionId ? `当前会话: \`${lastSessionId.slice(0, 8)}...\`` : "当前无活跃会话";
     return {
       text: `📋 CC Bridge 命令：
-/cc <问题> — 提交任务（自动续接上一轮，直接连着聊就行）
+/cc <问题> — 提交任务（同频道自动续接，不用手动带 ID）
 /cc-new — 开始全新会话
 /cc-new <问题> — 开新会话并立即提问
 /cc-recent — 查看最近会话列表
 /cc-now — 查看当前会话 ID
 /cc-resume <id> <问题> — 切到指定历史会话继续聊
 
-💡 连着发 /cc 就是同一轮对话，不用手动带 ID
+💡 同一频道连着发 /cc 就是同一轮对话
 ${session}`
     };
   }
@@ -84,7 +86,6 @@ ${session}`
 
       const lines = data.sessions.map((s: any, i: number) => {
         const time = new Date(s.lastModified).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
-        // 清理 topic：去多余空白/换行，截断到 50 字符，防止超 Discord 2000 字限制被拆消息
         const topic = (s.topic || "(no topic)").replace(/\s+/g, " ").trim().slice(0, 50) + (s.topic?.length > 50 ? "…" : "");
         return `${i + 1}. ${topic}\n   \`${s.sessionId.slice(0, 8)}\` | ${time} | ${s.sizeKB}KB`;
       });
@@ -106,34 +107,34 @@ ${session}`
 
   // /cc新会话 [prompt] → 重置 + 可选立即提问
   if (/^(新会话|new)/i.test(args)) {
-    lastSessionId = null;
+    channelSessions.delete(channelKey);
     const prompt = args.replace(/^(新会话|new)\s*/i, "").trim();
     if (!prompt) {
       log.info("[cc-bridge] /cc新会话: 会话已重置");
       return { text: "🔄 会话已重置，下次 /cc 将开始新会话。" };
     }
-    args = prompt; // 继续走提交流程
+    args = prompt;
   }
 
   // /cc接续 <sessionId> [prompt] → 手动指定 session
   const resumeMatch = args.match(/^接续\s+([a-f0-9-]{8,})\s*(.*)/i);
   if (resumeMatch) {
-    lastSessionId = resumeMatch[1];
+    channelSessions.set(channelKey, resumeMatch[1]);
     const prompt = resumeMatch[2].trim();
-    log.info(`[cc-bridge] /cc接续: session=${lastSessionId.slice(0, 8)}`);
+    log.info(`[cc-bridge] /cc接续: session=${resumeMatch[1].slice(0, 8)}`);
     if (!prompt) {
-      return { text: `🔗 已切换到会话 \`${lastSessionId.slice(0, 8)}...\`\n下次 /cc <问题> 将在此会话继续。` };
+      return { text: `🔗 已切换到会话 \`${resumeMatch[1].slice(0, 8)}...\`\n下次 /cc <问题> 将在此会话继续。` };
     }
-    args = prompt; // 继续走提交流程
+    args = prompt;
   }
 
   // 默认：提交 CC 任务
   const prompt = args;
+  const currentSession = channelSessions.get(channelKey) || null;
 
-  // 回调频道：优先用发送命令的频道（在哪问就在哪回），fallback 到配置的默认频道
-  const sourceChannel = ctx.to?.replace(/^channel:/, "") || "";
-  const callback = sourceChannel || CC_CHANNEL;
-  log.info(`[cc-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${lastSessionId ? ' [session:' + lastSessionId.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
+  // 回调频道：在哪问就在哪回
+  const callback = channelKey !== "default" ? channelKey : CC_CHANNEL;
+  log.info(`[cc-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
     prompt,
@@ -141,7 +142,7 @@ ${session}`
     callbackChannel: callback,
   };
   if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
-  if (lastSessionId) body.sessionId = lastSessionId;
+  if (currentSession) body.sessionId = currentSession;
 
   try {
     const res = await api("POST", "/claude", body);
@@ -152,7 +153,7 @@ ${session}`
     }
 
     const data = await res.json() as { taskId: string; sessionId: string };
-    lastSessionId = data.sessionId;
+    channelSessions.set(channelKey, data.sessionId);
     log.info(`[cc-bridge] 提交成功: task=${data.taskId.slice(0, 8)}, session=${data.sessionId.slice(0, 8)}`);
     return { text: "" };
   } catch (err: unknown) {
