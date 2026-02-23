@@ -23,6 +23,6 @@
         "description": "Discord channel ID where CC results are delivered"
       }
     },
-    "required": ["apiToken", "callbackChannel"]
+    "required": []
   }
 }

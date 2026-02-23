@@ -227,7 +227,7 @@ export function register(pluginApi: any) {
     name: "cc",
     description: "远程控制 Claude Code（零 token，直达 task-api）",
     acceptsArgs: true,
-    requireAuth: true,
+    requireAuth: false,
     handler: handleCcCommand,
   });
 
@@ -243,7 +243,7 @@ export function register(pluginApi: any) {
       name: sub.name,
       description: sub.desc,
       acceptsArgs: true,
-      requireAuth: true,
+      requireAuth: false,
       handler: (ctx: any) => handleCcCommand({ ...ctx, args: `${sub.inject} ${ctx.args || ""}`.trim() }),
     });
   }
