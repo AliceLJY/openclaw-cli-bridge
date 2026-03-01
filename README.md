@@ -144,13 +144,14 @@ CC Bridge was born from a real daily workflow: controlling Claude Code from Disc
 
 ## Ecosystem
 
-This plugin is part of a toolchain for controlling Claude Code from Discord:
+This plugin is part of a toolchain for controlling AI coding CLIs from Discord and Telegram:
 
 | Project | Role |
 |---------|------|
-| [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) | Local worker that bridges OpenClaw to Claude Code via Task API |
+| [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) | Local worker that bridges OpenClaw to Claude Code / Codex / Gemini via Task API |
+| [telegram-cc-bridge](https://github.com/AliceLJY/telegram-cc-bridge) | Telegram as async remote control for Claude Code, Codex CLI, and Gemini CLI |
 | [openclaw-cc-pipeline](https://github.com/AliceLJY/openclaw-cc-pipeline) | Multi-turn CC orchestration with human-in-the-loop review |
-| [content-alchemy](https://github.com/AliceLJY/content-alchemy) | 7-stage content pipeline — a primary use case driven through CC |
+| [content-alchemy](https://github.com/AliceLJY/content-alchemy) | 5-stage content pipeline — a primary use case driven through CC |
 | [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) | Bot config kit for content publishing via OpenClaw |
 
 ## Acknowledgments
@@ -169,9 +170,9 @@ Built by **小试AI** ([@AliceLJY](https://github.com/AliceLJY)) · WeChat: **�
 
 Six content pillars: **Hands-on AI** · **AI Pitfall Diaries** · **AI & Humanity** · **AI Cold Eye** · **AI Musings** · **AI Visual Notes**
 
-Open-source byproducts: [content-alchemy](https://github.com/AliceLJY/content-alchemy) · [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) · [openclaw-cc-pipeline](https://github.com/AliceLJY/openclaw-cc-pipeline) · [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) · [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill)
+Open-source byproducts: [content-alchemy](https://github.com/AliceLJY/content-alchemy) · [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) · [openclaw-cc-pipeline](https://github.com/AliceLJY/openclaw-cc-pipeline) · [telegram-cc-bridge](https://github.com/AliceLJY/telegram-cc-bridge) · [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) · [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill)
 
 <img src="./assets/wechat_qr.jpg" width="200" alt="WeChat QR Code">
 
 ---
-v0.2.0 by Claude Code (Opus 4.6)
+v0.3.0 by Claude Code (Opus 4.6)
