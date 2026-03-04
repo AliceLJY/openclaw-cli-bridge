@@ -1,45 +1,58 @@
-# CC Bridge — OpenClaw Plugin
+# CLI Bridge — OpenClaw Plugin
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue)](https://www.typescriptlang.org/)
 [![OpenClaw](https://img.shields.io/badge/OpenClaw-Plugin-purple)](https://github.com/openclaw/openclaw)
 
-> Bridge Discord slash commands to local Claude Code — zero agent tokens, zero noise.
+> Bridge Discord to Claude Code / Codex / Gemini CLI — zero agent tokens, zero noise.
 
-> **CC Bridge** 把 Discord 命令直连本地 Claude Code，不消耗 agent token，不经过 AI 润色。你在 Discord 里发 `/cc 帮我查个 bug`，任务直接到你本机的 Claude Code，结果由 worker 回调到 Discord 频道。
+> **CLI Bridge** 把 Discord 命令直连本地三大 AI CLI（Claude Code、Codex、Gemini），不消耗 agent token，不经过 AI 润色。你在 Discord 里发 `/cc 帮我查个 bug`、`/codex 优化这段代码`、`/gemini 解释这个概念`，任务直接到你本机对应的 CLI，结果由 worker 回调到 Discord 频道。
 
 ## The Problem
 
-Running Claude Code locally is powerful, but controlling it from your phone or another device means SSH tunnels, token juggling, or leaving a terminal open. OpenClaw bots can invoke tools, but every round-trip costs agent tokens — and the bot "helpfully" rephrases your CC output.
+Running AI coding CLIs locally is powerful, but controlling them from your phone or another device means SSH tunnels, token juggling, or leaving a terminal open. OpenClaw bots can invoke tools, but every round-trip costs agent tokens — and the bot "helpfully" rephrases your CLI output.
 
-> 本地跑 Claude Code 很强，但想从手机远程操控就得折腾 SSH 隧道或者开着终端。OpenClaw bot 虽然能调工具，但每次都消耗 agent token，而且 bot 还"贴心地"把 CC 输出重新润色一遍。
+> 本地跑 AI 编程 CLI 很强，但想从手机远程操控就得折腾 SSH 隧道或者开着终端。OpenClaw bot 虽然能调工具，但每次都消耗 agent token，而且 bot 还"贴心地"把 CLI 输出重新润色一遍。
 
 ## The Solution
 
-CC Bridge registers Discord commands (`/cc`, `/cc-new`, `/cc-recent`, etc.) via OpenClaw's `registerCommand` API. Commands are handled **directly by the plugin** — no agent dispatch, no token cost, no AI rewriting. CC results are pushed back to Discord via [openclaw-worker](https://github.com/AliceLJY/openclaw-worker)'s callback mechanism.
+CLI Bridge registers Discord commands (`/cc`, `/codex`, `/gemini`, plus subcommands) via OpenClaw's `registerCommand` API. Commands are handled **directly by the plugin** — no agent dispatch, no token cost, no AI rewriting. Results are pushed back to Discord via [openclaw-worker](https://github.com/AliceLJY/openclaw-worker)'s callback mechanism.
 
-> CC Bridge 通过 OpenClaw 的 `registerCommand` API 注册 Discord 命令。命令由插件直接处理——不经过 agent、不消耗 token、不被 AI 改写。CC 结果通过 [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) 的回调机制推回 Discord。
+> CLI Bridge 通过 OpenClaw 的 `registerCommand` API 注册 Discord 命令。命令由插件直接处理——不经过 agent、不消耗 token、不被 AI 改写。结果通过 [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) 的回调机制推回 Discord。
 
 ## Architecture
 
 ```
-Discord             OpenClaw Bot              CC Bridge Plugin        openclaw-worker         Claude Code
+Discord             OpenClaw Bot              CLI Bridge Plugin        openclaw-worker         AI CLI
   |                     |                          |                       |                     |
   | /cc fix the bug     |                          |                       |                     |
   |-------------------->| registerCommand match     |                       |                     |
   |                     |------------------------->| POST /claude           |                     |
-  |                     |                          |---------------------->| spawn session        |
+  |                     |                          |---------------------->| spawn Claude Code    |
   |                     |                          |                       |-------------------->|
   |                     |                          |                       |     ...working...    |
   |                     |                          |                       |<--------------------|
   |                     |    callback to Discord   |                       |                     |
   |<--------------------------------------------------------------------- |                     |
-  |  (result in #cc)    |                          |                       |                     |
+  |                     |                          |                       |                     |
+  | /codex optimize it  |                          |                       |                     |
+  |-------------------->|------------------------->| POST /codex            |                     |
+  |                     |                          |---------------------->| spawn Codex CLI     |
+  |                     |                          |                       |-------------------->|
+  |                     |                          |                       |<--------------------|
+  |<--------------------------------------------------------------------- |                     |
+  |                     |                          |                       |                     |
+  | /gemini explain X   |                          |                       |                     |
+  |-------------------->|------------------------->| POST /gemini           |                     |
+  |                     |                          |---------------------->| spawn Gemini CLI    |
+  |                     |                          |                       |-------------------->|
+  |                     |                          |                       |<--------------------|
+  |<--------------------------------------------------------------------- |                     |
 ```
 
-> - `/cc` 命令由 `registerCommand` 拦截，**不进入 agent 处理流程**（`shouldContinue: false`）
-> - 任务通过 HTTP 提交给 openclaw-worker 的 Task API
-> - CC 完成后，worker 直接用 Discord Bot API 推结果到指定频道
+> - 所有命令由 `registerCommand` 拦截，**不进入 agent 处理流程**（`shouldContinue: false`）
+> - 任务通过 HTTP 提交给 openclaw-worker 的 Task API（`/claude`、`/codex`、`/gemini` 三条路径）
+> - CLI 完成后，worker 直接用 Discord Bot API 推结果到指定频道
 > - 全程零 agent token 消耗
 
 ## Commands
@@ -47,27 +60,39 @@ Discord             OpenClaw Bot              CC Bridge Plugin        openclaw-w
 | Command | Description |
 |---------|-------------|
 | `/cc <prompt>` | Submit a task to Claude Code (auto-continues last session) |
-| `/cc-new` | Reset session (next `/cc` starts fresh) |
-| `/cc-new <prompt>` | Reset and immediately submit |
+| `/cc-new` | Reset CC session (next `/cc` starts fresh) |
+| `/cc-new <prompt>` | Reset CC session and immediately submit |
 | `/cc-recent` | List recent CC sessions |
-| `/cc-now` | Show current session ID |
-| `/cc-resume <id> <prompt>` | Switch to a specific session and continue |
+| `/cc-now` | Show current CC session ID |
+| `/cc-resume <id> <prompt>` | Switch to a specific CC session and continue |
+| `/codex <prompt>` | Submit a task to OpenAI Codex CLI (auto-continues last session) |
+| `/codex 新会话` | Reset Codex session |
+| `/codex 接续 <id> <prompt>` | Switch to a specific Codex session |
+| `/gemini <prompt>` | Submit a task to Google Gemini CLI (auto-continues last session) |
+| `/gemini 新会话` | Reset Gemini session |
+| `/gemini 接续 <id> <prompt>` | Switch to a specific Gemini session |
 
-> 连续发 `/cc` 自动在同一会话里继续对话，不需要手动带 session ID。想换话题就用 `/cc-new`。
+> 连续发同一命令自动在同一会话里继续对话，不需要手动带 session ID。想换话题就用 `/xx 新会话`。
 
-### Agent Tool: `cc_call`
+## Agent Tools
 
-CC Bridge also registers a `cc_call` tool for other channel agents. When an agent needs Claude Code assistance, it calls `cc_call` — the result is delivered directly to Discord via callback, not through the agent.
+CLI Bridge also registers tools for other channel agents to call programmatically:
 
-> `cc_call` 工具供其他频道的 agent 使用。agent 调用后结果由 worker 回调直推 Discord，不经过 agent 润色。
+| Tool | Description |
+|------|-------------|
+| `cc_call` | Submit a task to Claude Code — result delivered via callback, not through the agent |
+| `codex_call` | Submit a task to Codex CLI — result delivered via callback |
+| `gemini_call` | Submit a task to Gemini CLI — result delivered via callback |
+
+> 这些工具供其他频道的 agent 使用。agent 调用后结果由 worker 回调直推 Discord，不经过 agent 润色。
 
 ## Prerequisites
 
 - [OpenClaw](https://github.com/openclaw/openclaw) bot running (Docker recommended)
 - [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) running locally with Task API enabled
-- Claude Code installed locally (with Max subscription or API key)
+- At least one of: Claude Code, Codex CLI, or Gemini CLI installed locally
 
-> **作者环境**：MacBook Air M4 (16GB) · Docker 运行 OpenClaw bot · 本地 [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) 提供 Task API · Claude Code (Max subscription) · Bun 运行时
+> **作者环境**：MacBook Air M4 (16GB) · Docker 运行 OpenClaw bot · 本地 [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) 提供 Task API · Claude Code (Max subscription) + Codex CLI + Gemini CLI · Bun 运行时
 
 ## Installation
 
@@ -75,21 +100,24 @@ CC Bridge also registers a `cc_call` tool for other channel agents. When an agen
 
 ```bash
 cd ~/.openclaw-<your-bot>/extensions/
-git clone https://github.com/AliceLJY/openclaw-cc-bridge.git cc-bridge
+git clone https://github.com/AliceLJY/openclaw-cli-bridge.git cli-bridge
 ```
 
 2. **Configure in `openclaw.json`:**
 
-Add the plugin config under `plugins.entries`:
+Add the plugin to `plugins.allow` and configure under `plugins.entries`:
 
 ```json
 {
   "plugins": {
+    "allow": ["cli-bridge"],
     "entries": {
-      "cc-bridge": {
+      "cli-bridge": {
         "enabled": true,
-        "apiToken": "your-task-api-token",
-        "callbackChannel": "your-discord-channel-id"
+        "config": {
+          "apiToken": "your-task-api-token",
+          "callbackChannel": "your-discord-channel-id"
+        }
       }
     }
   }
@@ -99,8 +127,9 @@ Add the plugin config under `plugins.entries`:
 | Config Key | Required | Description |
 |-----------|----------|-------------|
 | `apiToken` | Yes | Auth token from your openclaw-worker config |
-| `callbackChannel` | Yes | Discord channel ID where CC results are delivered |
+| `callbackChannel` | Yes | Discord channel ID where results are delivered |
 | `apiUrl` | No | Task API URL (default: `http://host.docker.internal:3456`) |
+| `discordBotToken` | No | Bot token for callback delivery (uses bot's own token if omitted) |
 
 3. **Restart your OpenClaw bot.** The plugin auto-registers on startup.
 
@@ -113,7 +142,7 @@ Add the plugin config under `plugins.entries`:
 OpenClaw's `registerCommand` API registers text commands that are handled **before** the agent processes the message. When a command matches, the framework returns `shouldContinue: false` — the agent never sees the message. This means:
 
 - **Zero token cost** — no LLM inference for command handling
-- **Zero noise** — no AI rephrasing of CC output
+- **Zero noise** — no AI rephrasing of CLI output
 - **Instant response** — no agent thinking time
 
 > `registerCommand` 注册的命令在 agent 之前处理。匹配到命令后框架返回 `shouldContinue: false`，agent 根本看不到这条消息。
@@ -128,19 +157,19 @@ OpenClaw's `matchPluginCommand` splits command name from arguments **by space**.
 
 ## What's Different from HappyClaw?
 
-[HappyClaw](https://github.com/rwmjhb/happyclaw) is a **PTY bridge** — it multiplexes local terminal sessions (Claude Code, Codex, Gemini CLI) and streams I/O to OpenClaw. CC Bridge takes a completely different approach:
+[HappyClaw](https://github.com/rwmjhb/happyclaw) is a **PTY bridge** — it multiplexes local terminal sessions and streams I/O to OpenClaw. CLI Bridge takes a completely different approach:
 
-| | HappyClaw | CC Bridge |
-|--|-----------|-----------|
+| | HappyClaw | CLI Bridge |
+|--|-----------|------------|
 | **Mechanism** | PTY terminal multiplexing | HTTP Task API |
-| **Scope** | Any CLI tool (Claude Code, Codex, Gemini) | Claude Code only (via openclaw-worker) |
-| **Session model** | Persistent PTY processes | Stateless API calls with session ID tracking |
-| **Unique feature** | Real-time terminal streaming | Auto-session continuation (just keep sending `/cc`) |
-| **Design** | General-purpose bridge | Purpose-built for Claude Code + Discord workflow |
+| **Scope** | Any CLI tool via PTY | Claude Code + Codex + Gemini via dedicated endpoints |
+| **Session model** | Persistent PTY processes | Stateless API calls with per-channel session tracking |
+| **Unique feature** | Real-time terminal streaming | Auto-session continuation (just keep sending `/cc`, `/codex`, `/gemini`) |
+| **Design** | General-purpose terminal bridge | Purpose-built for AI CLI + Discord workflow |
 
-CC Bridge was born from a real daily workflow: controlling Claude Code from Discord on a phone while away from the desk. The **auto-session continuation** (no manual session ID juggling) and **dual-mode design** (slash commands for humans, `cc_call` tool for agents) came directly from dogfooding the tool.
+CLI Bridge was born from a real daily workflow: controlling AI CLIs from Discord on a phone while away from the desk. The **auto-session continuation** (no manual session ID juggling) and **dual-mode design** (slash commands for humans, `*_call` tools for agents) came directly from dogfooding the tool.
 
-> CC Bridge 诞生于真实的日常场景：离开电脑时用手机 Discord 远程操控本地 Claude Code。**自动会话续接**（不用手动带 session ID，连着发 `/cc` 就行）和**双模式设计**（命令给人用、cc_call 工具给 agent 用）都是在实际使用中磨出来的。HappyClaw 教会了我 `registerCommand` 的正确姿势，而 CC Bridge 是在这个基础上针对 Claude Code + Discord 场景的独立实现。
+> CLI Bridge 诞生于真实的日常场景：离开电脑时用手机 Discord 远程操控本地 AI CLI。**自动会话续接**（不用手动带 session ID，连着发就行）和**双模式设计**（命令给人用、`*_call` 工具给 agent 用）都是在实际使用中磨出来的。HappyClaw 教会了我 `registerCommand` 的正确姿势，而 CLI Bridge 是在这个基础上针对 AI CLI + Discord 场景的独立实现。
 
 ## Ecosystem
 
@@ -157,11 +186,11 @@ This plugin is part of a toolchain for controlling AI coding CLIs from Discord a
 
 ## Acknowledgments
 
-- **[HappyClaw](https://github.com/rwmjhb/happyclaw)** by [@rwmjhb](https://github.com/rwmjhb) — the PTY bridge plugin that pioneered the `registerCommand` pattern for OpenClaw. CC Bridge's architecture (ASCII subcommands, zero-token command handling, direct callback delivery) was directly inspired by studying HappyClaw's source code. Thank you for sharing!
+- **[HappyClaw](https://github.com/rwmjhb/happyclaw)** by [@rwmjhb](https://github.com/rwmjhb) — the PTY bridge plugin that pioneered the `registerCommand` pattern for OpenClaw. CLI Bridge's architecture (ASCII subcommands, zero-token command handling, direct callback delivery) was directly inspired by studying HappyClaw's source code. Thank you for sharing!
 - Built for the [OpenClaw](https://github.com/openclaw/openclaw) ecosystem
-- Uses [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) Task API for local Claude Code integration
+- Uses [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) Task API for local AI CLI integration
 
-> 特别感谢 [@rwmjhb](https://github.com/rwmjhb) 的 [HappyClaw](https://github.com/rwmjhb/happyclaw) 项目。CC Bridge 的架构设计（ASCII 子命令、零 token 命令处理、回调直推）直接学自 HappyClaw 的源码。开源社区的知识共享让每个人都能站在前人的肩膀上。
+> 特别感谢 [@rwmjhb](https://github.com/rwmjhb) 的 [HappyClaw](https://github.com/rwmjhb/happyclaw) 项目。CLI Bridge 的架构设计（ASCII 子命令、零 token 命令处理、回调直推）直接学自 HappyClaw 的源码。开源社区的知识共享让每个人都能站在前人的肩膀上。
 
 ## Author
 
@@ -176,4 +205,4 @@ Open-source byproducts: [content-alchemy](https://github.com/AliceLJY/content-al
 <img src="./assets/wechat_qr.jpg" width="200" alt="WeChat QR Code">
 
 ---
-v0.3.0 by Claude Code (Opus 4.6)
+v0.4.0 by Claude Code (Opus 4.6)
