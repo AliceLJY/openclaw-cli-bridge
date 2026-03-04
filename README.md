@@ -237,12 +237,11 @@ This plugin is part of a toolchain for controlling AI coding CLIs from Discord a
 | [content-alchemy](https://github.com/AliceLJY/content-alchemy) | 5-stage content pipeline — a primary use case driven through CC |
 | [content-publisher](https://github.com/AliceLJY/content-publisher) | Image generation, layout formatting, and WeChat API publishing |
 | [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) | Task API + Docker compose for OpenClaw |
-| [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) | Bot-native content pipeline (archived — split into content-alchemy + content-publisher) |
-| [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline) | Multi-turn orchestration protocol (archived — merged into this repo) |
 | [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill) | Build digital clones from corpus data |
 | [local-memory](https://github.com/AliceLJY/local-memory) | Local AI conversation search (LanceDB + Jina) |
 | [cc-shell](https://github.com/AliceLJY/cc-shell) | Lightweight Claude Code chat UI |
-| [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge) | Telegram AI bridge (currently unused) |
+| [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge) | Telegram AI bridge (tri-backend: Claude + Codex + Gemini) |
+| [telegram-cli-bridge](https://github.com/AliceLJY/telegram-cli-bridge) | Telegram CLI bridge (Gemini CLI path) |
 
 ## Acknowledgments
 
@@ -260,7 +259,7 @@ Built by **小试AI** ([@AliceLJY](https://github.com/AliceLJY)) · WeChat: **�
 
 Six content pillars: **Hands-on AI** · **AI Pitfall Diaries** · **AI & Humanity** · **AI Cold Eye** · **AI Musings** · **AI Visual Notes**
 
-Open-source byproducts: [content-alchemy](https://github.com/AliceLJY/content-alchemy) · [content-publisher](https://github.com/AliceLJY/content-publisher) · [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) · [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline) · [openclaw-cli-bridge](https://github.com/AliceLJY/openclaw-cli-bridge) · [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) · [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill) · [local-memory](https://github.com/AliceLJY/local-memory) · [cc-shell](https://github.com/AliceLJY/cc-shell) · [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge)
+Open-source byproducts: [content-alchemy](https://github.com/AliceLJY/content-alchemy) · [content-publisher](https://github.com/AliceLJY/content-publisher) · [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) · [openclaw-cli-bridge](https://github.com/AliceLJY/openclaw-cli-bridge) · [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill) · [local-memory](https://github.com/AliceLJY/local-memory) · [cc-shell](https://github.com/AliceLJY/cc-shell) · [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge) · [telegram-cli-bridge](https://github.com/AliceLJY/telegram-cli-bridge)
 
 <img src="./assets/wechat_qr.jpg" width="200" alt="WeChat QR Code">
 
