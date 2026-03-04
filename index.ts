@@ -1,5 +1,5 @@
 /**
- * CC Bridge — OpenClaw Plugin
+ * CLI Bridge — OpenClaw Plugin
  *
  * 架构（学自 HappyClaw）：
  * - /cc 命令通过 registerCommand 注册，零 agent token，零杂音
@@ -49,20 +49,20 @@ const channelSessions = new Map<string, string>();
 
 // ---- /cc 命令 handler ----
 async function handleCcCommand(ctx: any): Promise<{ text: string; isError?: boolean }> {
-  const log = (globalThis as any).__ccBridgeLog ?? console;
+  const log = (globalThis as any).__cliBridgeLog ?? console;
   let args = (ctx.args || "").trim();
 
   // 频道 key：按频道隔离 session
   const channelKey = ctx.to?.replace(/^channel:/, "") || "default";
   const lastSessionId = channelSessions.get(channelKey) || null;
 
-  log.info(`[cc-bridge] handler called | args="${args}" | channel=${channelKey.slice(0, 8)} | session=${lastSessionId?.slice(0, 8) || 'none'}`);
+  log.info(`[cli-bridge] handler called | args="${args}" | channel=${channelKey.slice(0, 8)} | session=${lastSessionId?.slice(0, 8) || 'none'}`);
 
   // 空命令 → 帮助
   if (!args) {
     const session = lastSessionId ? `当前会话: \`${lastSessionId}\`` : "当前无活跃会话";
     return {
-      text: `📋 CC Bridge 命令：
+      text: `📋 CLI Bridge 命令：
 /cc <问题> — 提交任务（同频道自动续接，不用手动带 ID）
 /cc-new — 开始全新会话
 /cc-new <问题> — 开新会话并立即提问
@@ -77,7 +77,7 @@ ${session}`
 
   // /cc最近 → 查询最近会话
   if (/^(最近|recent)/i.test(args)) {
-    log.info("[cc-bridge] /cc最近: 查询会话列表");
+    log.info("[cli-bridge] /cc最近: 查询会话列表");
     try {
       const res = await api("GET", "/claude/recent?limit=8");
       if (!res.ok) return { text: "❌ 查询失败", isError: true };
@@ -110,7 +110,7 @@ ${session}`
     channelSessions.delete(channelKey);
     const prompt = args.replace(/^(新会话|new)\s*/i, "").trim();
     if (!prompt) {
-      log.info("[cc-bridge] /cc新会话: 会话已重置");
+      log.info("[cli-bridge] /cc新会话: 会话已重置");
       return { text: "🔄 会话已重置，下次 /cc 将开始新会话。" };
     }
     args = prompt;
@@ -121,7 +121,7 @@ ${session}`
   if (resumeMatch) {
     channelSessions.set(channelKey, resumeMatch[1]);
     const prompt = resumeMatch[2].trim();
-    log.info(`[cc-bridge] /cc接续: session=${resumeMatch[1].slice(0, 8)}`);
+    log.info(`[cli-bridge] /cc接续: session=${resumeMatch[1].slice(0, 8)}`);
     if (!prompt) {
       return { text: `🔗 已切换到会话 \`${resumeMatch[1]}\`\n下次 /cc <问题> 将在此会话继续。` };
     }
@@ -134,7 +134,7 @@ ${session}`
 
   // 回调频道：在哪问就在哪回
   const callback = channelKey !== "default" ? channelKey : CC_CHANNEL;
-  log.info(`[cc-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
+  log.info(`[cli-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
     prompt,
@@ -148,17 +148,17 @@ ${session}`
     const res = await api("POST", "/claude", body);
     if (!res.ok) {
       const errText = await res.text();
-      log.error(`[cc-bridge] 提交失败: ${res.status} ${errText}`);
+      log.error(`[cli-bridge] 提交失败: ${res.status} ${errText}`);
       return { text: `❌ 提交失败: ${res.status}`, isError: true };
     }
 
     const data = await res.json() as { taskId: string; sessionId: string };
     channelSessions.set(channelKey, data.sessionId);
-    log.info(`[cc-bridge] 提交成功: task=${data.taskId.slice(0, 8)}, session=${data.sessionId.slice(0, 8)}`);
+    log.info(`[cli-bridge] 提交成功: task=${data.taskId.slice(0, 8)}, session=${data.sessionId.slice(0, 8)}`);
     return { text: "" };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.error(`[cc-bridge] 提交异常: ${msg}`);
+    log.error(`[cli-bridge] 提交异常: ${msg}`);
     return { text: `❌ 无法连接 task-api: ${msg}`, isError: true };
   }
 }
@@ -171,7 +171,7 @@ async function handleGenericCLI(
   endpoint: string,
   label: string,
 ): Promise<{ text: string; isError?: boolean }> {
-  const log = (globalThis as any).__ccBridgeLog ?? console;
+  const log = (globalThis as any).__cliBridgeLog ?? console;
   let prompt = (ctx.args || "").trim();
 
   const channelKey = ctx.to?.replace(/^channel:/, "") || "default";
@@ -190,7 +190,7 @@ async function handleGenericCLI(
   const resumeMatch = prompt.match(/^接续\s+([a-f0-9-]{8,})\s*(.*)/i);
   if (resumeMatch) {
     cliSessions.set(sessionKey, resumeMatch[1]);
-    log.info(`[cc-bridge] /${label.toLowerCase()} 接续: session=${resumeMatch[1].slice(0, 8)}`);
+    log.info(`[cli-bridge] /${label.toLowerCase()} 接续: session=${resumeMatch[1].slice(0, 8)}`);
     prompt = resumeMatch[2].trim();
     if (!prompt) {
       return { text: `🔗 已切换到 ${label} 会话 \`${resumeMatch[1].slice(0, 8)}\`\n下次 /${label.toLowerCase()} <问题> 将在此会话继续。` };
@@ -208,7 +208,7 @@ async function handleGenericCLI(
 
   const callback = channelKey !== "default" ? channelKey : CC_CHANNEL;
   const currentSession = cliSessions.get(sessionKey) || null;
-  log.info(`[cc-bridge] /${label.toLowerCase()} 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
+  log.info(`[cli-bridge] /${label.toLowerCase()} 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
     prompt,
@@ -222,12 +222,12 @@ async function handleGenericCLI(
     const res = await api("POST", endpoint, body);
     if (!res.ok) {
       const errText = await res.text();
-      log.error(`[cc-bridge] ${label} 提交失败: ${res.status} ${errText}`);
+      log.error(`[cli-bridge] ${label} 提交失败: ${res.status} ${errText}`);
       return { text: `❌ ${label} 提交失败: ${res.status}`, isError: true };
     }
 
     const data = await res.json() as { taskId: string };
-    log.info(`[cc-bridge] ${label} 提交成功: task=${data.taskId.slice(0, 8)}`);
+    log.info(`[cli-bridge] ${label} 提交成功: task=${data.taskId.slice(0, 8)}`);
 
     // 后台轮询获取 sessionId（回调已推送结果，这里只为拿 session）
     pollCliSession(data.taskId, sessionKey, label).catch(() => {});
@@ -235,14 +235,14 @@ async function handleGenericCLI(
     return { text: "" };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    log.error(`[cc-bridge] ${label} 提交异常: ${msg}`);
+    log.error(`[cli-bridge] ${label} 提交异常: ${msg}`);
     return { text: `❌ 无法连接 task-api: ${msg}`, isError: true };
   }
 }
 
 // 后台轮询：从 task result 提取 sessionId 并存储
 async function pollCliSession(taskId: string, sessionKey: string, label: string) {
-  const log = (globalThis as any).__ccBridgeLog ?? console;
+  const log = (globalThis as any).__cliBridgeLog ?? console;
   // 等 CLI 执行完成（最多 12 分钟，每 15 秒检查一次）
   for (let i = 0; i < 48; i++) {
     await new Promise(r => setTimeout(r, 15000));
@@ -252,7 +252,7 @@ async function pollCliSession(taskId: string, sessionKey: string, label: string)
         const data = await res.json() as { metadata?: { sessionId?: string } };
         if (data.metadata?.sessionId) {
           cliSessions.set(sessionKey, data.metadata.sessionId);
-          log.info(`[cc-bridge] ${label} session 已捕获: ${data.metadata.sessionId.slice(0, 8)}`);
+          log.info(`[cli-bridge] ${label} session 已捕获: ${data.metadata.sessionId.slice(0, 8)}`);
         }
         return; // 结果已消费，结束轮询
       }
@@ -423,17 +423,17 @@ const geminiCallTool = {
 // ---- Plugin 注册 ----
 export function register(pluginApi: any) {
   const log = pluginApi.log ?? console;
-  (globalThis as any).__ccBridgeLog = log;
+  (globalThis as any).__cliBridgeLog = log;
 
-  // 从 pluginConfig 读取配置（openclaw.json → plugins.entries.cc-bridge）
+  // 从 pluginConfig 读取配置（openclaw.json → plugins.entries.cli-bridge）
   const cfg = pluginApi.pluginConfig ?? {};
   API_URL = cfg.apiUrl || "http://host.docker.internal:3456";
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
   DISCORD_BOT_TOKEN = cfg.discordBotToken || "";
 
-  if (!API_TOKEN) log.warn("[cc-bridge] ⚠ apiToken not configured — API calls will fail");
-  if (!CC_CHANNEL) log.warn("[cc-bridge] ⚠ callbackChannel not configured — results won't be delivered");
+  if (!API_TOKEN) log.warn("[cli-bridge] ⚠ apiToken not configured — API calls will fail");
+  if (!CC_CHANNEL) log.warn("[cli-bridge] ⚠ callbackChannel not configured — results won't be delivered");
 
   // 核心：registerCommand — 零 token 直达，不经过 agent
   // /cc <问题> 主命令
@@ -484,7 +484,7 @@ export function register(pluginApi: any) {
   pluginApi.registerTool(codexCallTool, { optional: true });
   pluginApi.registerTool(geminiCallTool, { optional: true });
 
-  log.info("[cc-bridge] Plugin registered: /cc /codex /gemini (all with session) + /cc-recent /cc-now /cc-new /cc-resume + cc_call + codex_call + gemini_call tools");
+  log.info("[cli-bridge] Plugin registered: /cc /codex /gemini (all with session) + /cc-recent /cc-now /cc-new /cc-resume + cc_call + codex_call + gemini_call tools");
 }
 
 export default { register };
