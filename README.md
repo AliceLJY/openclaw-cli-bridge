@@ -171,6 +171,63 @@ CLI Bridge was born from a real daily workflow: controlling AI CLIs from Discord
 
 > CLI Bridge 诞生于真实的日常场景：离开电脑时用手机 Discord 远程操控本地 AI CLI。**自动会话续接**（不用手动带 session ID，连着发就行）和**双模式设计**（命令给人用、`*_call` 工具给 agent 用）都是在实际使用中磨出来的。HappyClaw 教会了我 `registerCommand` 的正确姿势，而 CLI Bridge 是在这个基础上针对 AI CLI + Discord 场景的独立实现。
 
+## Multi-Turn Orchestration Protocol
+
+> This section originates from [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline) (now archived). The protocol is fully implemented in this plugin's session management.
+
+> 多轮编排协议——原始设计来自 [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline)（已归档），现在由本插件的会话管理完整实现。
+
+The core insight: **single-dispatch is not enough for complex tasks.** A typical content pipeline needs 3 rounds with human review between each. The protocol preserves full AI CLI context across rounds via `sessionId`.
+
+### How It Works
+
+```
+Round 1 (New task):
+  /cc "Stage 1: mine topics for X"
+  → Plugin submits to Task API (auto-generates sessionId)
+  → Worker invokes: claude --print --session-id <id> "prompt"
+  → Worker delivers result to Discord (callback with sessionId)
+  → User reviews output, provides feedback
+
+Round 2+ (Resume):
+  /cc "Continue to Stage 2. User chose angle: Y"
+  → Plugin reuses sessionId from Round 1 (auto-continuation)
+  → Worker invokes: claude --print --resume --session-id <id> "prompt"
+  → AI CLI resumes with full context from all previous rounds
+```
+
+Each round preserves full AI CLI context. The user has explicit control between rounds — the plugin **never auto-advances**.
+
+### Why Not MAS (Multi-Agent System)?
+
+OpenClaw natively supports MAS via `sessions_spawn` — multiple agents working in parallel. We retired MAS in favor of this pipeline:
+
+> OpenClaw 原生支持 MAS 多 agent 协作，但我们已经用 CLI Pipeline 替代了它。
+
+| | MAS (Multi-Agent) | CLI Pipeline |
+|---|---|---|
+| **How it works** | Main agent spawns sub-agents inside OpenClaw | Plugin dispatches tasks to external AI CLI |
+| **Context cost** | Every sub-agent's full output stays in main agent's context | Only result summaries flow back to Discord |
+| **Human control** | Agents auto-advance, user is passive | User confirms each round before next one starts |
+| **Agent count** | N agents x full context each | 1 AI CLI x full context, summaries back |
+
+**Bottom line**: For creative tasks (writing articles), the lighter single-CLI approach wins.
+
+> 简单说：MAS 是 N 个 agent 各背一套上下文，CLI Pipeline 是 1 个 AI CLI 背上下文、只回传摘要。
+
+### Pitfall Guide
+
+> All bugs discovered in a single evening of testing. 以下所有坑都是一个晚上踩出来的。
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| **Timeout needs buffer** | CLI ran 300,322ms, timeout was 300,000ms. Killed by 322ms. | Add 30s buffer. Default to 600s (10 min), never 300s. |
+| **SessionId must auto-generate** | Round 2 `--resume` exits in 596ms — session doesn't exist. | Task API auto-generates sessionId when not provided. |
+| **Callback must have retry** | Bot container was restarting during callback. Result lost. | Worker retries 3 times, 5s apart. |
+| **DM channels don't work** | Callback always fails in Discord DMs. | Only use server (guild) channels for callback. |
+| **Sessions are directory-scoped** | Worker creates session from `$HOME`, manual CLI from another dir can't find it. | Always start AI CLI from the same working directory. |
+| **Don't clean results too fast** | 5-min cleanup timer deleted result before Worker could fetch. | Separate timers: 15 min (incomplete), 30 min (completed). |
+
 ## Ecosystem
 
 This plugin is part of a toolchain for controlling AI coding CLIs from Discord and Telegram:
@@ -180,8 +237,8 @@ This plugin is part of a toolchain for controlling AI coding CLIs from Discord a
 | [content-alchemy](https://github.com/AliceLJY/content-alchemy) | 5-stage content pipeline — a primary use case driven through CC |
 | [content-publisher](https://github.com/AliceLJY/content-publisher) | Image generation, layout formatting, and WeChat API publishing |
 | [openclaw-worker](https://github.com/AliceLJY/openclaw-worker) | Task API + Docker compose for OpenClaw |
-| [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) | Bot-native content pipeline |
-| [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline) | Multi-turn CC orchestration CLI |
+| [openclaw-content-alchemy](https://github.com/AliceLJY/openclaw-content-alchemy) | Bot-native content pipeline (archived — split into content-alchemy + content-publisher) |
+| [openclaw-cli-pipeline](https://github.com/AliceLJY/openclaw-cli-pipeline) | Multi-turn orchestration protocol (archived — merged into this repo) |
 | [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill) | Build digital clones from corpus data |
 | [local-memory](https://github.com/AliceLJY/local-memory) | Local AI conversation search (LanceDB + Jina) |
 | [cc-shell](https://github.com/AliceLJY/cc-shell) | Lightweight Claude Code chat UI |

@@ -248,13 +248,15 @@ async function pollCliSession(taskId: string, sessionKey: string, label: string)
     await new Promise(r => setTimeout(r, 15000));
     try {
       const res = await api("GET", `/tasks/${taskId}?wait=15000`);
-      if (res.ok) {
-        const data = await res.json() as { metadata?: { sessionId?: string } };
-        if (data.metadata?.sessionId) {
-          cliSessions.set(sessionKey, data.metadata.sessionId);
-          log.info(`[cli-bridge] ${label} session 已捕获: ${data.metadata.sessionId.slice(0, 8)}`);
-        }
-        return; // 结果已消费，结束轮询
+      if (!res.ok) continue;
+      const data = await res.json() as { status?: string; metadata?: { sessionId?: string } };
+      if (data.metadata?.sessionId) {
+        cliSessions.set(sessionKey, data.metadata.sessionId);
+        log.info(`[cli-bridge] ${label} session 已捕获: ${data.metadata.sessionId.slice(0, 8)}`);
+      }
+      // Only stop polling when task has reached a terminal state
+      if (data.status === "completed" || data.status === "error" || data.status === "cancelled") {
+        return;
       }
     } catch {
       // 网络错误，继续轮询
@@ -441,7 +443,7 @@ export function register(pluginApi: any) {
     name: "cc",
     description: "远程控制 Claude Code（零 token，直达 task-api）",
     acceptsArgs: true,
-    requireAuth: false,
+    requireAuth: true,
     handler: handleCcCommand,
   });
 
@@ -457,7 +459,7 @@ export function register(pluginApi: any) {
       name: sub.name,
       description: sub.desc,
       acceptsArgs: true,
-      requireAuth: false,
+      requireAuth: true,
       handler: (ctx: any) => handleCcCommand({ ...ctx, args: `${sub.inject} ${ctx.args || ""}`.trim() }),
     });
   }
@@ -467,7 +469,7 @@ export function register(pluginApi: any) {
     name: "codex",
     description: "调用 OpenAI Codex CLI（支持上下文续接，发 /codex 新会话 重置）",
     acceptsArgs: true,
-    requireAuth: false,
+    requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/codex", "Codex"),
   });
 
@@ -475,7 +477,7 @@ export function register(pluginApi: any) {
     name: "gemini",
     description: "调用 Google Gemini CLI（支持上下文续接，发 /gemini 新会话 重置）",
     acceptsArgs: true,
-    requireAuth: false,
+    requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/gemini", "Gemini"),
   });
 
