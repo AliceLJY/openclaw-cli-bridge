@@ -240,7 +240,7 @@ This plugin is part of a toolchain for controlling AI coding CLIs from Discord a
 | [digital-clone-skill](https://github.com/AliceLJY/digital-clone-skill) | Build digital clones from corpus data |
 | [local-memory](https://github.com/AliceLJY/local-memory) | Local AI conversation search (LanceDB + Jina) |
 | [cc-shell](https://github.com/AliceLJY/cc-shell) | Lightweight Claude Code chat UI |
-| [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge) | Telegram AI bridge (tri-backend: Claude + Codex + Gemini) |
+| [telegram-ai-bridge](https://github.com/AliceLJY/telegram-ai-bridge) | 3 Telegram bots for Claude / Codex / Gemini via SDK |
 | [telegram-cli-bridge](https://github.com/AliceLJY/telegram-cli-bridge) | Telegram CLI bridge (Gemini CLI path) |
 
 ## Acknowledgments
