@@ -1,7 +1,7 @@
 {
   "name": "@openclaw/cli-bridge",
-  "version": "1.4.0",
-  "description": "Bridge Discord to Claude Code / Codex / Gemini CLI via task-api — zero agent tokens, zero noise",
+  "version": "1.5.0",
+  "description": "Docker-first command entry plane for OpenClaw-compatible local CLI execution",
   "type": "module",
   "main": "./index.ts",
   "license": "MIT",
@@ -15,7 +15,10 @@
     "claude-code",
     "discord",
     "bridge",
-    "plugin"
+    "plugin",
+    "docker",
+    "codex",
+    "gemini"
   ],
   "openclaw": {
     "extensions": ["./index.ts"]

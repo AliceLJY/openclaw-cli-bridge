@@ -1,8 +1,8 @@
 {
   "id": "cli-bridge",
   "name": "CLI Bridge",
-  "version": "1.4.0",
-  "description": "Bridge Discord to Claude Code / Codex / Gemini CLI via task-api — zero agent tokens, zero noise",
+  "version": "1.5.0",
+  "description": "Docker-first command entry plane for OpenClaw-compatible local CLI execution",
   "author": "AliceLJY",
   "license": "MIT",
   "entry": "./index.ts",

@@ -2,26 +2,38 @@
 
 [English](README.md) | **简体中文**
 
+这是 OpenClaw 兼容本地 CLI 执行链路里的 Docker-first 命令入口层。控制面可以跑在 Docker 或远端 OpenClaw 主机上，而这个插件负责把用户命令路由进 `openclaw-worker`，再落到真正拥有 Claude Code、Codex、Gemini、本地文件和 session 状态的那台机器上。
+
 ## 项目定位
 
-这个仓库是一个 OpenClaw 插件，不是独立服务。
+这个仓库不应该被讲成独立 AI 服务。
+
+它在这条 Docker-first 产品线里的位置是：
+
+- `openclaw-cli-bridge` = 用户命令入口层
+- `openclaw-worker` = 执行平面
+- 宿主机上的 Claude Code / Codex / Gemini = 真正的本地能力
 
 它自己不会直接执行 Claude Code、Codex CLI 或 Gemini CLI。这个插件的职责是在 OpenClaw 里注册命令，并把任务转发给独立的 `task-api` worker。离开 OpenClaw、`openclaw-worker` 和本地已安装的 AI CLI，这个仓库本身并不能单独成立。
 
-这个插件目前只在我自己的 OpenClaw + Docker + 本地 worker 工作流里实测过。
+更落地的部署理解是：
+
+- 可以把 OpenClaw 跑在本地 Docker，用这个插件接到宿主机 runner
+- 也可以把 OpenClaw 跑在远端服务器，再通过这个插件接到远端或本地 runner
+- 真正的执行必须留在拥有 CLI、文件、shell、浏览器上下文的那台机器上
 
 ## 这个项目做什么
 
 - 在 OpenClaw 里注册 `/cc`、`/codex`、`/gemini` 及相关会话命令
 - 把请求转发到 `openclaw-worker` 的 `/claude`、`/codex`、`/gemini` 等 task-api 接口
 - 通过 callback 机制把结果直接推回 Discord，避免 agent 改写
-- 在插件内存中按频道维护会话续接映射
+- 用本地 SQLite bridge store 持久化频道到 session 的映射
 - 用同一套 worker 协议承接两种交互模式：直连命令和 agent 委托
 
 ## 实测环境
 
-- 运行在 Docker 中的 OpenClaw bot
-- 运行在宿主机上的本地 `openclaw-worker` task-api
+- 运行在 Docker 或远端主机上的 OpenClaw bot
+- 运行在真正拥有本地 CLI 工具的宿主机上的 `openclaw-worker` task-api
 - 本地已安装的 Claude Code / Codex CLI / Gemini CLI
 - 在我自己的 Discord 服务器和频道配置中验证过 callback 流程
 
@@ -46,6 +58,15 @@
 - 成功调用 task-api 依赖有效的 `apiToken`
 - 会话续接只有在 worker 侧 CLI 能从同一工作目录和相同 session 存储布局恢复时才可靠
 
+## 部署模式
+
+| 模式 | 分别跑在哪里 | 说明 |
+|------|--------------|------|
+| Docker Local | OpenClaw 在 Docker，`openclaw-worker` 在同一台宿主机 | 最适合单机自托管 |
+| Docker + Remote Runner | OpenClaw 在 Docker，worker 在另一台机器 | 最适合把 Docker 当产品壳、把执行留在真实机器 |
+| Cloud + Remote Runner | OpenClaw 在远端服务器，worker 在真正有 CLI/文件权限的机器 | 主要远控形态 |
+| Single Host | OpenClaw 和 worker 都不走 Docker | 可以这么用，但不是主产品叙事 |
+
 ## 前置条件
 
 - OpenClaw
@@ -58,6 +79,24 @@
 ## 安装
 
 把这个仓库作为 OpenClaw 插件接入你的 OpenClaw 部署，并确保 bot 容器能访问 worker 的 task-api。
+
+最小配置示例：
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "cli-bridge": {
+        "apiUrl": "http://host.docker.internal:3456",
+        "apiToken": "your-task-api-token",
+        "callbackChannel": "your-discord-channel-id",
+        "discordBotToken": "your-discord-bot-token",
+        "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
+      }
+    }
+  }
+}
+```
 
 ## 快速使用
 
@@ -145,24 +184,6 @@
 - `sessionStorePath` 默认是 `/tmp/openclaw-cli-bridge-state.db`，用于把频道到 session 的映射持久化到 SQLite，插件重启后继续保留
 - 如果同一路径下之前是旧 JSON store，插件第一次加载时会自动迁移到 SQLite
 
-示例配置：
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "cli-bridge": {
-        "apiUrl": "http://host.docker.internal:3456",
-        "apiToken": "your-task-api-token",
-        "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token",
-        "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
-      }
-    }
-  }
-}
-```
-
 ## 命令
 
 - `/cc <prompt>`
@@ -197,6 +218,18 @@ Gemini 说明：
 现在 tool 路径和 slash command 路径在 worker 侧已经共享同一套任务协议。它们的区别是“谁发起任务”，不是“谁负责执行后端”。
 
 新增的 `cli_bridge_state` 工具和 `/cli-state` 命令是只读状态面，用来检查当前 session 绑定，不会修改任何会话。
+
+## 状态模型
+
+- bridge 把频道到 session 的映射持久化在 `sessionStorePath`
+- worker 把任务、活跃 session 和事件持久化在自己的状态库里
+- 宿主机 runner 另外保留 provider 级 cache/state，用于本地 resume 行为
+
+这三层不是重复设计：
+
+- bridge state = 频道到 session 的路由视角
+- worker state = 执行面和 callback 视角
+- runner cache = 宿主机 provider 恢复视角
 
 ## 已知限制
 
