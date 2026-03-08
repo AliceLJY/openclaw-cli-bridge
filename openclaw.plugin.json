@@ -1,7 +1,7 @@
 {
   "id": "cli-bridge",
   "name": "CLI Bridge",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "Bridge Discord to Claude Code / Codex / Gemini CLI via task-api — zero agent tokens, zero noise",
   "author": "AliceLJY",
   "license": "MIT",
@@ -20,11 +20,11 @@
       },
       "callbackChannel": {
         "type": "string",
-        "description": "Discord channel ID where CC results are delivered"
+        "description": "Discord channel ID where CLI results are delivered"
       },
       "discordBotToken": {
         "type": "string",
-        "description": "Discord bot token for this bot — CC results will be sent using this identity"
+        "description": "Discord bot token for this bot — CLI results will be sent using this identity"
       }
     },
     "required": []
