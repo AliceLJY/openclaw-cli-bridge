@@ -20,15 +20,19 @@
       },
       "callbackChannel": {
         "type": "string",
-        "description": "Discord channel ID where CLI results are delivered"
+        "description": "Callback channel ID where CLI results are delivered"
+      },
+      "callbackBotToken": {
+        "type": "string",
+        "description": "Bot token used for callback delivery when the worker needs to post results back through a bot identity"
       },
       "discordBotToken": {
         "type": "string",
-        "description": "Discord bot token for this bot — CLI results will be sent using this identity"
+        "description": "Legacy alias for callbackBotToken. Kept for backward compatibility with older Discord-first configs."
       },
       "sessionStorePath": {
         "type": "string",
-        "default": "/tmp/openclaw-cli-bridge-state.db",
+        "default": "~/.openclaw-cli-bridge/state.db",
         "description": "Path to persist CLI Bridge session mappings in SQLite across plugin restarts"
       }
     },

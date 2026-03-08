@@ -23,6 +23,10 @@
   "openclaw": {
     "extensions": ["./index.ts"]
   },
+  "scripts": {
+    "test": "bun test",
+    "doctor": "bash scripts/doctor.sh"
+  },
   "devDependencies": {
     "@types/node": "^25.3.5"
   }

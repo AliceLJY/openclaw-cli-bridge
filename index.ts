@@ -3,7 +3,7 @@
  *
  * 架构（学自 HappyClaw）：
  * - /cc 命令通过 registerCommand 注册，零 agent token，零杂音
- * - CC 结果由 worker 直推 Discord（Bot API），不经过 agent 润色
+ * - CC 结果由 worker 直推 callback channel（默认兼容 Discord Bot API），不经过 agent 润色
  * - cc_call 等工具保留给其他频道 agent 使用
  *
  * 用法（任意频道）：
@@ -27,8 +27,8 @@ import { DatabaseSync } from "node:sqlite";
 let API_URL = "";
 let API_TOKEN = "";
 let CC_CHANNEL = "";
-let DISCORD_BOT_TOKEN = "";
-let SESSION_STORE_PATH = "/tmp/openclaw-cli-bridge-state.db";
+let CALLBACK_BOT_TOKEN = "";
+let SESSION_STORE_PATH = path.join(process.env.HOME || "/tmp", ".openclaw-cli-bridge", "state.db");
 let sessionDb: DatabaseSync | null = null;
 
 type DispatchMode = "direct-command" | "agent-tool";
@@ -80,7 +80,7 @@ function buildTaskBody(
     responseMode: "direct-callback",
     entrypoint,
   };
-  if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
+  if (CALLBACK_BOT_TOKEN) body.callbackBotToken = CALLBACK_BOT_TOKEN;
   return body;
 }
 
@@ -497,7 +497,7 @@ const ccCallTool = {
   label: "Call Claude Code",
   description:
     "Submit a task to Claude Code via task-api. Returns immediately. " +
-    "CC's output will be delivered DIRECTLY to the Discord channel via callback (not through you). " +
+    "CC's output will be delivered DIRECTLY to the callback channel via callback (not through you). " +
     "IMPORTANT: Always pass 'channel' so the result is delivered to the CURRENT channel. " +
     "For NEW tasks: provide 'prompt' and 'channel'. " +
     "For FOLLOW-UP in an existing session: also provide 'sessionId'. " +
@@ -511,7 +511,7 @@ const ccCallTool = {
       },
       channel: {
         type: "string" as const,
-        description: "Discord channel ID where the result should be delivered (use the current channel ID)",
+        description: "Callback channel ID where the result should be delivered (use the current channel ID)",
       },
       sessionId: {
         type: "string" as const,
@@ -554,7 +554,7 @@ const codexCallTool = {
   label: "Call Codex CLI",
   description:
     "Submit a task to OpenAI Codex CLI via task-api. Returns immediately. " +
-    "Codex's output will be delivered DIRECTLY to the Discord channel via callback (not through you). " +
+    "Codex's output will be delivered DIRECTLY to the callback channel via callback (not through you). " +
     "IMPORTANT: Always pass 'channel' so the result is delivered to the CURRENT channel. " +
     "After calling this tool, tell the user '已提交，等 Codex 回调' and STOP.",
   parameters: {
@@ -566,7 +566,7 @@ const codexCallTool = {
       },
       channel: {
         type: "string" as const,
-        description: "Discord channel ID where the result should be delivered (use the current channel ID)",
+        description: "Callback channel ID where the result should be delivered (use the current channel ID)",
       },
       sessionId: {
         type: "string" as const,
@@ -609,7 +609,7 @@ const geminiCallTool = {
   label: "Call Gemini CLI",
   description:
     "Submit a task to Google Gemini CLI via task-api. Returns immediately. " +
-    "Gemini's output will be delivered DIRECTLY to the Discord channel via callback (not through you). " +
+    "Gemini's output will be delivered DIRECTLY to the callback channel via callback (not through you). " +
     "IMPORTANT: Always pass 'channel' so the result is delivered to the CURRENT channel. " +
     "After calling this tool, tell the user '已提交，等 Gemini 回调' and STOP.",
   parameters: {
@@ -621,7 +621,7 @@ const geminiCallTool = {
       },
       channel: {
         type: "string" as const,
-        description: "Discord channel ID where the result should be delivered (use the current channel ID)",
+        description: "Callback channel ID where the result should be delivered (use the current channel ID)",
       },
       sessionId: {
         type: "string" as const,
@@ -668,7 +668,7 @@ export function register(pluginApi: any) {
   API_URL = cfg.apiUrl || "http://host.docker.internal:3456";
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
-  DISCORD_BOT_TOKEN = cfg.discordBotToken || "";
+  CALLBACK_BOT_TOKEN = cfg.callbackBotToken || cfg.discordBotToken || "";
   SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-state.db";
   loadSessionStore(log);
 
