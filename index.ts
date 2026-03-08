@@ -19,13 +19,23 @@
  * 解决方案：子命令用独立 ASCII 命名（cc-recent 等），学 HappyClaw 模式。
  */
 
+import fs from "node:fs";
+import path from "node:path";
+
 // ---- 运行时配置（由 register() 从 pluginConfig 注入） ----
 let API_URL = "";
 let API_TOKEN = "";
 let CC_CHANNEL = "";
 let DISCORD_BOT_TOKEN = "";
+let SESSION_STORE_PATH = "/tmp/openclaw-cli-bridge-sessions.json";
 
 type DispatchMode = "direct-command" | "agent-tool";
+
+type SessionStoreData = {
+  version: 1;
+  channelSessions: Record<string, string>;
+  cliSessions: Record<string, string>;
+};
 
 // ---- 工具结果 helper ----
 function text(data: unknown) {
@@ -68,6 +78,62 @@ function buildTaskBody(
 
 // ---- 会话跟踪（按频道隔离，每个频道独立 session） ----
 const channelSessions = new Map<string, string>();
+const cliSessions = new Map<string, string>(); // "endpoint:channelKey" → sessionId
+
+function serializeMap(map: Map<string, string>) {
+  return Object.fromEntries(map.entries());
+}
+
+function saveSessionStore(log: { warn?: (msg: string) => void }) {
+  const data: SessionStoreData = {
+    version: 1,
+    channelSessions: serializeMap(channelSessions),
+    cliSessions: serializeMap(cliSessions),
+  };
+
+  try {
+    fs.mkdirSync(path.dirname(SESSION_STORE_PATH), { recursive: true });
+    fs.writeFileSync(SESSION_STORE_PATH, JSON.stringify(data, null, 2), "utf8");
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn?.(`[cli-bridge] session store save failed: ${message}`);
+  }
+}
+
+function loadSessionStore(log: { warn?: (msg: string) => void; info?: (msg: string) => void }) {
+  channelSessions.clear();
+  cliSessions.clear();
+
+  try {
+    if (!fs.existsSync(SESSION_STORE_PATH)) return;
+    const raw = fs.readFileSync(SESSION_STORE_PATH, "utf8");
+    if (!raw.trim()) return;
+    const data = JSON.parse(raw) as Partial<SessionStoreData>;
+
+    for (const [key, value] of Object.entries(data.channelSessions || {})) {
+      if (typeof value === "string" && value) channelSessions.set(key, value);
+    }
+    for (const [key, value] of Object.entries(data.cliSessions || {})) {
+      if (typeof value === "string" && value) cliSessions.set(key, value);
+    }
+
+    log.info?.(`[cli-bridge] session store loaded: cc=${channelSessions.size}, cli=${cliSessions.size}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn?.(`[cli-bridge] session store load failed: ${message}`);
+  }
+}
+
+function setSession(map: Map<string, string>, key: string, value: string, log: { warn?: (msg: string) => void }) {
+  map.set(key, value);
+  saveSessionStore(log);
+}
+
+function deleteSession(map: Map<string, string>, key: string, log: { warn?: (msg: string) => void }) {
+  if (map.delete(key)) {
+    saveSessionStore(log);
+  }
+}
 
 // ---- /cc 命令 handler ----
 async function handleCcCommand(ctx: any): Promise<{ text: string; isError?: boolean }> {
@@ -129,7 +195,7 @@ ${session}`
 
   // /cc新会话 [prompt] → 重置 + 可选立即提问
   if (/^(新会话|new)/i.test(args)) {
-    channelSessions.delete(channelKey);
+    deleteSession(channelSessions, channelKey, log);
     const prompt = args.replace(/^(新会话|new)\s*/i, "").trim();
     if (!prompt) {
       log.info("[cli-bridge] /cc新会话: 会话已重置");
@@ -141,7 +207,7 @@ ${session}`
   // /cc接续 <sessionId> [prompt] → 手动指定 session
   const resumeMatch = args.match(/^接续\s+([a-f0-9-]{8,})\s*(.*)/i);
   if (resumeMatch) {
-    channelSessions.set(channelKey, resumeMatch[1]);
+    setSession(channelSessions, channelKey, resumeMatch[1], log);
     const prompt = resumeMatch[2].trim();
     log.info(`[cli-bridge] /cc接续: session=${resumeMatch[1].slice(0, 8)}`);
     if (!prompt) {
@@ -172,7 +238,7 @@ ${session}`
     }
 
     const data = await res.json() as { taskId: string; sessionId: string };
-    channelSessions.set(channelKey, data.sessionId);
+    setSession(channelSessions, channelKey, data.sessionId, log);
     log.info(`[cli-bridge] 提交成功: task=${data.taskId.slice(0, 8)}, session=${data.sessionId.slice(0, 8)}`);
     return { text: "" };
   } catch (err: unknown) {
@@ -183,7 +249,6 @@ ${session}`
 }
 
 // ---- /codex 和 /gemini 通用 handler（支持 session 续接） ----
-const cliSessions = new Map<string, string>(); // "endpoint:channelKey" → sessionId
 
 async function handleGenericCLI(
   ctx: any,
@@ -198,7 +263,7 @@ async function handleGenericCLI(
 
   // /codex 新会话 / /gemini new → 重置会话
   if (/^(新会话|new)/i.test(prompt)) {
-    cliSessions.delete(sessionKey);
+    deleteSession(cliSessions, sessionKey, log);
     prompt = prompt.replace(/^(新会话|new)\s*/i, "").trim();
     if (!prompt) {
       return { text: `🔄 ${label} 会话已重置，下次提问开始新会话。` };
@@ -208,7 +273,7 @@ async function handleGenericCLI(
   // /codex 接续 <sessionId> [prompt] → 手动指定 session
   const resumeMatch = prompt.match(/^接续\s+([a-f0-9-]{8,})\s*(.*)/i);
   if (resumeMatch) {
-    cliSessions.set(sessionKey, resumeMatch[1]);
+    setSession(cliSessions, sessionKey, resumeMatch[1], log);
     log.info(`[cli-bridge] /${label.toLowerCase()} 接续: session=${resumeMatch[1].slice(0, 8)}`);
     prompt = resumeMatch[2].trim();
     if (!prompt) {
@@ -247,7 +312,7 @@ async function handleGenericCLI(
 
     const data = await res.json() as { taskId: string; sessionId?: string };
     if (data.sessionId) {
-      cliSessions.set(sessionKey, data.sessionId);
+      setSession(cliSessions, sessionKey, data.sessionId, log);
       log.info(`[cli-bridge] ${label} 会话已绑定: ${data.sessionId.slice(0, 8)}`);
     }
     log.info(`[cli-bridge] ${label} 提交成功: task=${data.taskId.slice(0, 8)}`);
@@ -438,6 +503,8 @@ export function register(pluginApi: any) {
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
   DISCORD_BOT_TOKEN = cfg.discordBotToken || "";
+  SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-sessions.json";
+  loadSessionStore(log);
 
   if (!API_TOKEN) log.warn("[cli-bridge] ⚠ apiToken not configured — API calls will fail");
   if (!CC_CHANNEL) log.warn("[cli-bridge] ⚠ callbackChannel not configured — results won't be delivered");

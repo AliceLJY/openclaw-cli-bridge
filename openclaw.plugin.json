@@ -1,7 +1,7 @@
 {
   "id": "cli-bridge",
   "name": "CLI Bridge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Bridge Discord to Claude Code / Codex / Gemini CLI via task-api — zero agent tokens, zero noise",
   "author": "AliceLJY",
   "license": "MIT",
@@ -25,6 +25,11 @@
       "discordBotToken": {
         "type": "string",
         "description": "Discord bot token for this bot — CLI results will be sent using this identity"
+      },
+      "sessionStorePath": {
+        "type": "string",
+        "default": "/tmp/openclaw-cli-bridge-sessions.json",
+        "description": "Path to persist CLI Bridge session mappings across plugin restarts"
       }
     },
     "required": []

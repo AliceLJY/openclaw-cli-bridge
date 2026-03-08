@@ -130,6 +130,7 @@
 - `apiToken`
 - `callbackChannel`
 - `discordBotToken`
+- `sessionStorePath`
 
 当前默认值和行为：
 
@@ -137,6 +138,7 @@
 - `apiToken` 没有配置时，task-api 调用会失败
 - `callbackChannel` 没有配置时，结果无法正常回投到 Discord
 - `discordBotToken` 不是必填，但提供后会用于 callback 投递
+- `sessionStorePath` 默认是 `/tmp/openclaw-cli-bridge-sessions.json`，用于让频道到 session 的映射在插件重启后继续保留
 
 示例配置：
 
@@ -148,7 +150,8 @@
         "apiUrl": "http://host.docker.internal:3456",
         "apiToken": "your-task-api-token",
         "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token"
+        "discordBotToken": "your-discord-bot-token",
+        "sessionStorePath": "/tmp/openclaw-cli-bridge-sessions.json"
       }
     }
   }
@@ -185,8 +188,8 @@ Gemini 说明：
 
 ## 已知限制
 
-- 会话映射保存在插件进程内存里
-- 插件重启后，这层按频道维护的 session 映射会丢失
+- 会话映射现在会持久化到 `sessionStorePath`，但它仍是本地文件状态，不是多实例共享状态
+- 如果你同时跑多个 bridge 实例，它们之间不会协调同一频道的 session 所有权
 - 结果是否能收到，取决于 worker callback 是否成功送达
 - 这个插件不能替代 `openclaw-worker`
 - 仍然需要手动把整套基础设施接好

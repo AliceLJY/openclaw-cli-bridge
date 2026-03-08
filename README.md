@@ -130,6 +130,7 @@ Supported fields:
 - `apiToken`
 - `callbackChannel`
 - `discordBotToken`
+- `sessionStorePath`
 
 Current defaults and behavior:
 
@@ -137,6 +138,7 @@ Current defaults and behavior:
 - `apiToken` is required for successful task-api calls
 - `callbackChannel` is required if you want results delivered back to Discord
 - `discordBotToken` is optional but used for callback delivery when provided
+- `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-sessions.json` so channel-to-session mappings survive plugin restarts
 
 Example plugin config:
 
@@ -148,7 +150,8 @@ Example plugin config:
         "apiUrl": "http://host.docker.internal:3456",
         "apiToken": "your-task-api-token",
         "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token"
+        "discordBotToken": "your-discord-bot-token",
+        "sessionStorePath": "/tmp/openclaw-cli-bridge-sessions.json"
       }
     }
   }
@@ -185,8 +188,8 @@ The tool path and the slash-command path now share the same task protocol on the
 
 ## Known Limits
 
-- Session maps are kept in memory inside the plugin
-- Plugin restart loses that in-memory channel-to-session mapping
+- Session maps are now persisted to `sessionStorePath`, but they are still local file state rather than shared storage
+- If multiple bridge instances run against the same channels, they will not coordinate session ownership
 - Results depend on worker callback delivery succeeding
 - This plugin does not replace `openclaw-worker`
 - Manual infrastructure wiring is still required
