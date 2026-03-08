@@ -82,12 +82,16 @@ Session controls:
 /cc-recent
 /cc-now
 /cc-resume <id> <prompt>
+/cli-state
+/cli-state all
 
-/codex 新会话
-/codex 接续 <id> <prompt>
+/codex-now
+/codex-new
+/codex-resume <id> <prompt>
 
-/gemini 新会话
-/gemini 接续 <id> <prompt>
+/gemini-now
+/gemini-new
+/gemini-resume <id> <prompt>
 ```
 
 Behavior summary:
@@ -167,18 +171,23 @@ Example plugin config:
 - `/cc-recent`
 - `/cc-now`
 - `/cc-resume <id> <prompt>`
+- `/cli-state`
+- `/cli-state all`
 - `/codex <prompt>`
-- `/codex 新会话`
-- `/codex 接续 <id> <prompt>`
+- `/codex-now`
+- `/codex-new`
+- `/codex-resume <id> <prompt>`
 - `/gemini <prompt>`
-- `/gemini 新会话`
-- `/gemini 接续 <id> <prompt>`
+- `/gemini-now`
+- `/gemini-new`
+- `/gemini-resume <id> <prompt>`
 
 Gemini note:
 - Gemini keeps a logical bridge session in OpenClaw, but the underlying Gemini CLI resumes the latest linked session rather than restoring an arbitrary UUID directly.
 
 ## Tools
 
+- `cli_bridge_state`
 - `cc_call`
 - `codex_call`
 - `gemini_call`
@@ -186,6 +195,8 @@ Gemini note:
 These tools also forward to the worker and rely on callback delivery. They do not replace the worker or run the CLIs inside the plugin process.
 
 The tool path and the slash-command path now share the same task protocol on the worker side. The difference is who initiates the task, not which backend executes it.
+
+The new `cli_bridge_state` tool and `/cli-state` command are read-only inspection surfaces for current session bindings. They exist so you can debug session continuity without mutating anything.
 
 ## Known Limits
 

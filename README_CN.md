@@ -82,12 +82,16 @@
 /cc-recent
 /cc-now
 /cc-resume <id> <prompt>
+/cli-state
+/cli-state all
 
-/codex 新会话
-/codex 接续 <id> <prompt>
+/codex-now
+/codex-new
+/codex-resume <id> <prompt>
 
-/gemini 新会话
-/gemini 接续 <id> <prompt>
+/gemini-now
+/gemini-new
+/gemini-resume <id> <prompt>
 ```
 
 行为差异：
@@ -167,18 +171,23 @@
 - `/cc-recent`
 - `/cc-now`
 - `/cc-resume <id> <prompt>`
+- `/cli-state`
+- `/cli-state all`
 - `/codex <prompt>`
-- `/codex 新会话`
-- `/codex 接续 <id> <prompt>`
+- `/codex-now`
+- `/codex-new`
+- `/codex-resume <id> <prompt>`
 - `/gemini <prompt>`
-- `/gemini 新会话`
-- `/gemini 接续 <id> <prompt>`
+- `/gemini-now`
+- `/gemini-new`
+- `/gemini-resume <id> <prompt>`
 
 Gemini 说明：
 - OpenClaw 侧会保留逻辑会话 ID，但 Gemini CLI 底层实际执行的是“续接最近关联会话”，而不是直接按任意 UUID 恢复。
 
 ## 工具
 
+- `cli_bridge_state`
 - `cc_call`
 - `codex_call`
 - `gemini_call`
@@ -186,6 +195,8 @@ Gemini 说明：
 这些工具同样只是把任务转发给 worker，并依赖 callback 回投结果；它们不会替代 worker，也不会在插件进程里直接执行 CLI。
 
 现在 tool 路径和 slash command 路径在 worker 侧已经共享同一套任务协议。它们的区别是“谁发起任务”，不是“谁负责执行后端”。
+
+新增的 `cli_bridge_state` 工具和 `/cli-state` 命令是只读状态面，用来检查当前 session 绑定，不会修改任何会话。
 
 ## 已知限制
 
