@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/cli-bridge",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Bridge Discord to Claude Code / Codex / Gemini CLI via task-api — zero agent tokens, zero noise",
   "type": "module",
   "main": "./index.ts",

@@ -39,6 +39,12 @@ type SessionStoreData = {
   cliSessions: Record<string, string>;
 };
 
+type SessionBindingRow = {
+  scope: "cc" | "codex" | "gemini";
+  key: string;
+  sessionId: string;
+};
+
 // ---- 工具结果 helper ----
 function text(data: unknown) {
   const t = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -210,13 +216,89 @@ function deleteSession(map: Map<string, string>, key: string, log: { warn?: (msg
   }
 }
 
+function getCurrentChannelKey(ctx: any) {
+  return ctx.to?.replace(/^channel:/, "") || "default";
+}
+
+function collectSessionBindings(channelKey: string) {
+  const current = {
+    cc: channelSessions.get(channelKey) || null,
+    codex: cliSessions.get(`/codex:${channelKey}`) || null,
+    gemini: cliSessions.get(`/gemini:${channelKey}`) || null,
+  };
+
+  const bindings: SessionBindingRow[] = [];
+  for (const [key, sessionId] of channelSessions.entries()) {
+    bindings.push({ scope: "cc", key, sessionId });
+  }
+  for (const [key, sessionId] of cliSessions.entries()) {
+    if (key.startsWith("/codex:")) {
+      bindings.push({ scope: "codex", key: key.slice("/codex:".length), sessionId });
+    } else if (key.startsWith("/gemini:")) {
+      bindings.push({ scope: "gemini", key: key.slice("/gemini:".length), sessionId });
+    }
+  }
+
+  return {
+    sessionStorePath: SESSION_STORE_PATH,
+    current,
+    counts: {
+      cc: channelSessions.size,
+      cli: cliSessions.size,
+      total: channelSessions.size + cliSessions.size,
+    },
+    bindings,
+  };
+}
+
+function formatStateText(channelKey: string, includeAll: boolean) {
+  const state = collectSessionBindings(channelKey);
+  const lines = [
+    "CLI Bridge 状态",
+    "",
+    `当前频道: \`${channelKey}\``,
+    `sessionStore: \`${state.sessionStorePath}\``,
+    `直连优先: 是`,
+    `委托模式: 仅在需要规划/编排时使用`,
+    "",
+    "当前绑定:",
+    `- CC: ${state.current.cc ? `\`${state.current.cc}\`` : "无"}`,
+    `- Codex: ${state.current.codex ? `\`${state.current.codex}\`` : "无"}`,
+    `- Gemini: ${state.current.gemini ? `\`${state.current.gemini}\`` : "无"}`,
+    "",
+    `总绑定数: CC ${state.counts.cc} / CLI ${state.counts.cli} / 全部 ${state.counts.total}`,
+  ];
+
+  if (includeAll) {
+    const recent = state.bindings.slice(0, 20);
+    lines.push("");
+    lines.push(`最近绑定（最多 20 条，当前共 ${state.bindings.length} 条）:`);
+    if (recent.length === 0) {
+      lines.push("- 无");
+    } else {
+      for (const row of recent) {
+        lines.push(`- ${row.scope} | ${row.key} | \`${row.sessionId}\``);
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+async function handleStateCommand(ctx: any): Promise<{ text: string; isError?: boolean }> {
+  const includeAll = /^(all|全部|全部绑定)$/i.test((ctx.args || "").trim());
+  return {
+    text: formatStateText(getCurrentChannelKey(ctx), includeAll),
+  };
+}
+
 // ---- /cc 命令 handler ----
 async function handleCcCommand(ctx: any): Promise<{ text: string; isError?: boolean }> {
   const log = (globalThis as any).__cliBridgeLog ?? console;
   let args = (ctx.args || "").trim();
 
   // 频道 key：按频道隔离 session
-  const channelKey = ctx.to?.replace(/^channel:/, "") || "default";
+  const channelKey = getCurrentChannelKey(ctx);
   const lastSessionId = channelSessions.get(channelKey) || null;
 
   log.info(`[cli-bridge] handler called | args="${args}" | channel=${channelKey.slice(0, 8)} | session=${lastSessionId?.slice(0, 8) || 'none'}`);
@@ -333,12 +415,22 @@ async function handleGenericCLI(
   const log = (globalThis as any).__cliBridgeLog ?? console;
   let prompt = (ctx.args || "").trim();
 
-  const channelKey = ctx.to?.replace(/^channel:/, "") || "default";
+  const channelKey = getCurrentChannelKey(ctx);
   const sessionKey = `${endpoint}:${channelKey}`;
+  let currentSession = cliSessions.get(sessionKey) || null;
+
+  if (/^(当前|现在|session)$/i.test(prompt)) {
+    return {
+      text: currentSession
+        ? `${label} 当前会话: \`${currentSession}\``
+        : `${label} 当前无活跃会话。发 /${label.toLowerCase()} <问题> 开始新会话。`,
+    };
+  }
 
   // /codex 新会话 / /gemini new → 重置会话
   if (/^(新会话|new)/i.test(prompt)) {
     deleteSession(cliSessions, sessionKey, log);
+    currentSession = null;
     prompt = prompt.replace(/^(新会话|new)\s*/i, "").trim();
     if (!prompt) {
       return { text: `🔄 ${label} 会话已重置，下次提问开始新会话。` };
@@ -349,6 +441,7 @@ async function handleGenericCLI(
   const resumeMatch = prompt.match(/^接续\s+([a-f0-9-]{8,})\s*(.*)/i);
   if (resumeMatch) {
     setSession(cliSessions, sessionKey, resumeMatch[1], log);
+    currentSession = resumeMatch[1];
     log.info(`[cli-bridge] /${label.toLowerCase()} 接续: session=${resumeMatch[1].slice(0, 8)}`);
     prompt = resumeMatch[2].trim();
     if (!prompt) {
@@ -357,7 +450,6 @@ async function handleGenericCLI(
   }
 
   if (!prompt) {
-    const currentSession = cliSessions.get(sessionKey);
     return {
       text: currentSession
         ? `${label} 当前会话: \`${currentSession}\`\n发 /${label.toLowerCase()} <问题> 继续对话\n发 /${label.toLowerCase()} 新会话 重置\n发 /${label.toLowerCase()} 接续 <sessionId> 手动恢复`
@@ -366,7 +458,6 @@ async function handleGenericCLI(
   }
 
   const callback = channelKey !== "default" ? channelKey : CC_CHANNEL;
-  const currentSession = cliSessions.get(sessionKey) || null;
   log.info(`[cli-bridge] /${label.toLowerCase()} 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
@@ -619,6 +710,19 @@ export function register(pluginApi: any) {
     requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/codex", "Codex"),
   });
+  for (const sub of [
+    { name: "codex-now", inject: "当前", desc: "查看当前 Codex 会话" },
+    { name: "codex-new", inject: "新会话", desc: "重置 Codex 会话（可附带问题）" },
+    { name: "codex-resume", inject: "接续", desc: "手动续接指定 Codex 会话" },
+  ]) {
+    pluginApi.registerCommand({
+      name: sub.name,
+      description: sub.desc,
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: (ctx: any) => handleGenericCLI({ ...ctx, args: `${sub.inject} ${ctx.args || ""}`.trim() }, "/codex", "Codex"),
+    });
+  }
 
   pluginApi.registerCommand({
     name: "gemini",
@@ -627,6 +731,54 @@ export function register(pluginApi: any) {
     requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/gemini", "Gemini"),
   });
+  for (const sub of [
+    { name: "gemini-now", inject: "当前", desc: "查看当前 Gemini 会话" },
+    { name: "gemini-new", inject: "新会话", desc: "重置 Gemini 会话（可附带问题）" },
+    { name: "gemini-resume", inject: "接续", desc: "手动续接指定 Gemini 会话" },
+  ]) {
+    pluginApi.registerCommand({
+      name: sub.name,
+      description: sub.desc,
+      acceptsArgs: true,
+      requireAuth: true,
+      handler: (ctx: any) => handleGenericCLI({ ...ctx, args: `${sub.inject} ${ctx.args || ""}`.trim() }, "/gemini", "Gemini"),
+    });
+  }
+
+  pluginApi.registerCommand({
+    name: "cli-state",
+    description: "查看 CLI Bridge 当前频道绑定和持久化状态（加 all 查看全局摘要）",
+    acceptsArgs: true,
+    requireAuth: true,
+    handler: handleStateCommand,
+  });
+
+  pluginApi.registerTool({
+    name: "cli_bridge_state",
+    label: "Inspect CLI Bridge State",
+    description:
+      "Read-only view into persisted CLI Bridge session bindings. " +
+      "Use this when you need to inspect current cc/codex/gemini session mappings without mutating anything.",
+    parameters: {
+      type: "object" as const,
+      properties: {
+        channel: {
+          type: "string" as const,
+          description: "Channel ID to inspect. Omit to inspect the default channel binding.",
+        },
+        includeAll: {
+          type: "boolean" as const,
+          description: "Whether to include a recent global binding summary.",
+        },
+      },
+    },
+    async execute(_id: string, params: Record<string, unknown>) {
+      const channelKey = typeof params.channel === "string" && params.channel.trim()
+        ? params.channel.trim()
+        : "default";
+      return text(formatStateText(channelKey, Boolean(params.includeAll)));
+    },
+  }, { optional: true });
 
   // 保留工具给其他频道 agent 用
   pluginApi.registerTool(ccCallTool, { optional: true });
