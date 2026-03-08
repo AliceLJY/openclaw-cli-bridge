@@ -16,6 +16,7 @@ This plugin is only tested in my own OpenClaw + Docker + local worker setup.
 - Forwards requests to `openclaw-worker` task-api endpoints such as `/claude`, `/codex`, and `/gemini`
 - Uses callback delivery so results are pushed back to Discord without agent rewriting
 - Tracks per-channel session continuation in plugin memory
+- Carries one worker protocol for two interaction modes: direct commands and agent delegation
 
 ## Tested Environment
 
@@ -30,6 +31,7 @@ This plugin is only tested in my own OpenClaw + Docker + local worker setup.
 - Default config assumes Docker-to-host networking via `host.docker.internal`
 - Other deployment topologies may require changing `apiUrl`, callback behavior, and worker-side paths
 - Session continuation depends on worker-side CLI behavior and consistent working directory
+- Gemini continuation uses the CLI's `--resume latest` semantics under the hood, not arbitrary UUID restore
 - This is not presented as a cross-platform guarantee product
 - Even if the plugin code itself is portable, the surrounding workflow is still tied to my own deployment style
 
@@ -56,6 +58,67 @@ This plugin is only tested in my own OpenClaw + Docker + local worker setup.
 ## Installation
 
 Install this repository as an OpenClaw plugin in your OpenClaw deployment, then make sure the worker task-api is reachable from the bot container.
+
+## Quick Usage
+
+Three main commands:
+
+- `/cc`
+- `/codex`
+- `/gemini`
+
+Typical usage:
+
+```text
+/cc 帮我重构这个模块并补测试
+/codex Fix the failing auth tests
+/gemini 帮我解释这个报错为什么出现
+```
+
+Session controls:
+
+```text
+/cc-new
+/cc-recent
+/cc-now
+/cc-resume <id> <prompt>
+
+/codex 新会话
+/codex 接续 <id> <prompt>
+
+/gemini 新会话
+/gemini 接续 <id> <prompt>
+```
+
+Behavior summary:
+
+- Claude Code: explicit session ID continuation, plus recent/current session helpers
+- Codex: bridge-level session continuation mapped to real Codex sessions on the worker
+- Gemini: bridge-level session continuation, but the underlying Gemini CLI resumes the latest linked session
+
+## Interaction Modes
+
+This repository should be treated as one product with two entry modes, not two competing architectures.
+
+Primary mode:
+
+- Direct commands: `/cc`, `/codex`, `/gemini`
+- The bot acts as a transport layer only
+- The user talks to the CLI runner directly through the bridge
+- This is the low-noise, low-token path and should be the default user experience
+
+Secondary mode:
+
+- Agent delegation: `cc_call`, `codex_call`, `gemini_call`
+- The agent decides when to delegate work to a local CLI
+- The result still comes back by direct callback instead of agent rewriting
+- This mode is for planning, approval, or multi-step orchestration, not for ordinary chat when direct commands are enough
+
+Practical rule:
+
+- Use direct commands for normal CLI conversations
+- Use agent tools only when you actually need the agent to plan or coordinate
+- Treat the old pipeline idea as interaction methodology folded into delegated mode, not as a separate runtime product
 
 ## Configuration
 
@@ -107,6 +170,9 @@ Example plugin config:
 - `/gemini 新会话`
 - `/gemini 接续 <id> <prompt>`
 
+Gemini note:
+- Gemini keeps a logical bridge session in OpenClaw, but the underlying Gemini CLI resumes the latest linked session rather than restoring an arbitrary UUID directly.
+
 ## Tools
 
 - `cc_call`
@@ -114,6 +180,8 @@ Example plugin config:
 - `gemini_call`
 
 These tools also forward to the worker and rely on callback delivery. They do not replace the worker or run the CLIs inside the plugin process.
+
+The tool path and the slash-command path now share the same task protocol on the worker side. The difference is who initiates the task, not which backend executes it.
 
 ## Known Limits
 

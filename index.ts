@@ -25,6 +25,8 @@ let API_TOKEN = "";
 let CC_CHANNEL = "";
 let DISCORD_BOT_TOKEN = "";
 
+type DispatchMode = "direct-command" | "agent-tool";
+
 // ---- 工具结果 helper ----
 function text(data: unknown) {
   const t = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -42,6 +44,26 @@ async function api(method: string, path: string, body?: unknown) {
   };
   if (body) opts.body = JSON.stringify(body);
   return fetch(`${API_URL}${path}`, opts);
+}
+
+function buildTaskBody(
+  prompt: string,
+  timeout: number,
+  callbackChannel: string,
+  dispatchMode: DispatchMode,
+  entrypoint: string,
+) {
+  const body: Record<string, unknown> = {
+    prompt,
+    timeout,
+    callbackChannel,
+    origin: "openclaw-cli-bridge",
+    dispatchMode,
+    responseMode: "direct-callback",
+    entrypoint,
+  };
+  if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
+  return body;
 }
 
 // ---- 会话跟踪（按频道隔离，每个频道独立 session） ----
@@ -137,11 +159,8 @@ ${session}`
   log.info(`[cli-bridge] /cc 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
-    prompt,
-    timeout: 1200000,
-    callbackChannel: callback,
+    ...buildTaskBody(prompt, 1200000, callback, "direct-command", "cc"),
   };
-  if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
   if (currentSession) body.sessionId = currentSession;
 
   try {
@@ -193,7 +212,7 @@ async function handleGenericCLI(
     log.info(`[cli-bridge] /${label.toLowerCase()} 接续: session=${resumeMatch[1].slice(0, 8)}`);
     prompt = resumeMatch[2].trim();
     if (!prompt) {
-      return { text: `🔗 已切换到 ${label} 会话 \`${resumeMatch[1].slice(0, 8)}\`\n下次 /${label.toLowerCase()} <问题> 将在此会话继续。` };
+      return { text: `🔗 已切换到 ${label} 会话 \`${resumeMatch[1]}\`\n下次 /${label.toLowerCase()} <问题> 将在此会话继续。` };
     }
   }
 
@@ -201,7 +220,7 @@ async function handleGenericCLI(
     const currentSession = cliSessions.get(sessionKey);
     return {
       text: currentSession
-        ? `${label} 当前会话: \`${currentSession.slice(0, 8)}\`\n发 /${label.toLowerCase()} <问题> 继续对话\n发 /${label.toLowerCase()} 新会话 重置\n发 /${label.toLowerCase()} 接续 <sessionId> 手动恢复`
+        ? `${label} 当前会话: \`${currentSession}\`\n发 /${label.toLowerCase()} <问题> 继续对话\n发 /${label.toLowerCase()} 新会话 重置\n发 /${label.toLowerCase()} 接续 <sessionId> 手动恢复`
         : `用法: /${label.toLowerCase()} <问题>`
     };
   }
@@ -211,12 +230,12 @@ async function handleGenericCLI(
   log.info(`[cli-bridge] /${label.toLowerCase()} 提交: "${prompt.slice(0, 50)}..."${currentSession ? ' [session:' + currentSession.slice(0, 8) + ']' : ' [新会话]'} → callback:${callback.slice(0, 8)}`);
 
   const body: Record<string, unknown> = {
-    prompt,
-    timeout: 300000,
-    callbackChannel: callback,
+    ...buildTaskBody(prompt, 300000, callback, "direct-command", label.toLowerCase()),
   };
-  if (currentSession) body.sessionId = currentSession;
-  if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
+  if (currentSession) {
+    body.sessionId = currentSession;
+    if (endpoint === "/gemini") body.resumeLatest = true;
+  }
 
   try {
     const res = await api("POST", endpoint, body);
@@ -226,41 +245,18 @@ async function handleGenericCLI(
       return { text: `❌ ${label} 提交失败: ${res.status}`, isError: true };
     }
 
-    const data = await res.json() as { taskId: string };
+    const data = await res.json() as { taskId: string; sessionId?: string };
+    if (data.sessionId) {
+      cliSessions.set(sessionKey, data.sessionId);
+      log.info(`[cli-bridge] ${label} 会话已绑定: ${data.sessionId.slice(0, 8)}`);
+    }
     log.info(`[cli-bridge] ${label} 提交成功: task=${data.taskId.slice(0, 8)}`);
-
-    // 后台轮询获取 sessionId（回调已推送结果，这里只为拿 session）
-    pollCliSession(data.taskId, sessionKey, label).catch(() => {});
 
     return { text: "" };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     log.error(`[cli-bridge] ${label} 提交异常: ${msg}`);
     return { text: `❌ 无法连接 task-api: ${msg}`, isError: true };
-  }
-}
-
-// 后台轮询：从 task result 提取 sessionId 并存储
-async function pollCliSession(taskId: string, sessionKey: string, label: string) {
-  const log = (globalThis as any).__cliBridgeLog ?? console;
-  // 等 CLI 执行完成（最多 12 分钟，每 15 秒检查一次）
-  for (let i = 0; i < 48; i++) {
-    await new Promise(r => setTimeout(r, 15000));
-    try {
-      const res = await api("GET", `/tasks/${taskId}?wait=15000`);
-      if (!res.ok) continue;
-      const data = await res.json() as { status?: string; metadata?: { sessionId?: string } };
-      if (data.metadata?.sessionId) {
-        cliSessions.set(sessionKey, data.metadata.sessionId);
-        log.info(`[cli-bridge] ${label} session 已捕获: ${data.metadata.sessionId.slice(0, 8)}`);
-      }
-      // Only stop polling when task has reached a terminal state
-      if (data.status === "completed" || data.status === "error" || data.status === "cancelled") {
-        return;
-      }
-    } catch {
-      // 网络错误，继续轮询
-    }
   }
 }
 
@@ -300,11 +296,14 @@ const ccCallTool = {
   async execute(_id: string, params: Record<string, unknown>) {
     const callback = (params.channel as string) || CC_CHANNEL;
     const body: Record<string, unknown> = {
-      prompt: params.prompt,
-      timeout: (params.timeout as number) || 1200000,
-      callbackChannel: callback,
+      ...buildTaskBody(
+        String(params.prompt ?? ""),
+        (params.timeout as number) || 1200000,
+        callback,
+        "agent-tool",
+        "cc_call",
+      ),
     };
-    if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
     if (params.sessionId) body.sessionId = params.sessionId;
 
     try {
@@ -352,11 +351,14 @@ const codexCallTool = {
   async execute(_id: string, params: Record<string, unknown>) {
     const callback = (params.channel as string) || CC_CHANNEL;
     const body: Record<string, unknown> = {
-      prompt: params.prompt,
-      timeout: (params.timeout as number) || 300000,
-      callbackChannel: callback,
+      ...buildTaskBody(
+        String(params.prompt ?? ""),
+        (params.timeout as number) || 300000,
+        callback,
+        "agent-tool",
+        "codex_call",
+      ),
     };
-    if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
     if (params.sessionId) body.sessionId = params.sessionId;
 
     try {
@@ -392,7 +394,7 @@ const geminiCallTool = {
       },
       sessionId: {
         type: "string" as const,
-        description: "Session ID from a previous gemini_call (omit for new tasks)",
+        description: "Logical session ID from a previous gemini_call (Gemini resumes the latest linked session under the hood)",
       },
       timeout: {
         type: "number" as const,
@@ -404,11 +406,14 @@ const geminiCallTool = {
   async execute(_id: string, params: Record<string, unknown>) {
     const callback = (params.channel as string) || CC_CHANNEL;
     const body: Record<string, unknown> = {
-      prompt: params.prompt,
-      timeout: (params.timeout as number) || 300000,
-      callbackChannel: callback,
+      ...buildTaskBody(
+        String(params.prompt ?? ""),
+        (params.timeout as number) || 300000,
+        callback,
+        "agent-tool",
+        "gemini_call",
+      ),
     };
-    if (DISCORD_BOT_TOKEN) body.callbackBotToken = DISCORD_BOT_TOKEN;
     if (params.sessionId) body.sessionId = params.sessionId;
 
     try {
@@ -467,7 +472,7 @@ export function register(pluginApi: any) {
   // /codex 和 /gemini 命令（支持 session 续接）
   pluginApi.registerCommand({
     name: "codex",
-    description: "调用 OpenAI Codex CLI（支持上下文续接，发 /codex 新会话 重置）",
+    description: "调用 OpenAI Codex CLI（直连模式，支持上下文续接，发 /codex 新会话 重置）",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/codex", "Codex"),
@@ -475,7 +480,7 @@ export function register(pluginApi: any) {
 
   pluginApi.registerCommand({
     name: "gemini",
-    description: "调用 Google Gemini CLI（支持上下文续接，发 /gemini 新会话 重置）",
+    description: "调用 Google Gemini CLI（直连模式；支持续接当前会话，底层使用 resume latest）",
     acceptsArgs: true,
     requireAuth: true,
     handler: (ctx: any) => handleGenericCLI(ctx, "/gemini", "Gemini"),
@@ -486,7 +491,7 @@ export function register(pluginApi: any) {
   pluginApi.registerTool(codexCallTool, { optional: true });
   pluginApi.registerTool(geminiCallTool, { optional: true });
 
-  log.info("[cli-bridge] Plugin registered: /cc /codex /gemini (all with session) + /cc-recent /cc-now /cc-new /cc-resume + cc_call + codex_call + gemini_call tools");
+  log.info("[cli-bridge] Plugin registered: direct commands (/cc /codex /gemini) + delegated tools (cc_call / codex_call / gemini_call)");
 }
 
 export default { register };

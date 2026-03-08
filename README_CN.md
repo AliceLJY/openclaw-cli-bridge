@@ -16,6 +16,7 @@
 - 把请求转发到 `openclaw-worker` 的 `/claude`、`/codex`、`/gemini` 等 task-api 接口
 - 通过 callback 机制把结果直接推回 Discord，避免 agent 改写
 - 在插件内存中按频道维护会话续接映射
+- 用同一套 worker 协议承接两种交互模式：直连命令和 agent 委托
 
 ## 实测环境
 
@@ -30,6 +31,7 @@
 - 默认配置假设 Docker 容器通过 `host.docker.internal` 访问宿主机
 - 如果你的部署拓扑不同，通常需要调整 `apiUrl`、callback 行为以及 worker 侧路径
 - 会话续接还依赖 worker 侧 CLI 的行为，以及稳定一致的工作目录
+- Gemini 的续接底层走的是 CLI 的 `--resume latest` 语义，不是任意 UUID 直恢复
 - 这个仓库不应被表述成带跨平台保证的通用产品
 - 即便插件代码本身不强绑某个系统，它依赖的整套工作流仍然是我的个人部署方式
 
@@ -56,6 +58,67 @@
 ## 安装
 
 把这个仓库作为 OpenClaw 插件接入你的 OpenClaw 部署，并确保 bot 容器能访问 worker 的 task-api。
+
+## 快速使用
+
+三个主命令：
+
+- `/cc`
+- `/codex`
+- `/gemini`
+
+典型用法：
+
+```text
+/cc 帮我重构这个模块并补测试
+/codex Fix the failing auth tests
+/gemini 帮我解释这个报错为什么出现
+```
+
+会话控制：
+
+```text
+/cc-new
+/cc-recent
+/cc-now
+/cc-resume <id> <prompt>
+
+/codex 新会话
+/codex 接续 <id> <prompt>
+
+/gemini 新会话
+/gemini 接续 <id> <prompt>
+```
+
+行为差异：
+
+- Claude Code：显式 session ID 续接，并提供 recent/current 辅助命令
+- Codex：OpenClaw 侧保留逻辑会话，worker 侧映射到真实 Codex session
+- Gemini：OpenClaw 侧保留逻辑会话，但底层 Gemini CLI 实际执行的是续接最近关联会话
+
+## 交互模式
+
+这个仓库应该被理解成一个产品、两种入口，而不是两套互相竞争的架构。
+
+主路径：
+
+- 直连命令：`/cc`、`/codex`、`/gemini`
+- bot 只负责传递，不参与理解和润色
+- 用户本质上是在通过 bridge 直接和本地 CLI runner 对话
+- 这是低噪音、低 token 损耗的默认路径
+
+次路径：
+
+- agent 委托：`cc_call`、`codex_call`、`gemini_call`
+- 由 agent 判断何时需要把任务委托给本地 CLI
+- 结果依然通过 direct callback 回来，而不是再经过 agent 改写
+- 这条路适合规划、确认、多步编排，不适合明明可以直聊还绕 agent 一圈
+
+实用判断：
+
+- 普通 CLI 对话，优先走直连命令
+- 只有真的需要 agent 参与规划或协调时，才走 tools
+- 旧的 pipeline 思路应当被吸收到“委托模式”的交互方法里，而不是继续作为独立运行时产品维护
 
 ## 配置
 
@@ -107,6 +170,9 @@
 - `/gemini 新会话`
 - `/gemini 接续 <id> <prompt>`
 
+Gemini 说明：
+- OpenClaw 侧会保留逻辑会话 ID，但 Gemini CLI 底层实际执行的是“续接最近关联会话”，而不是直接按任意 UUID 恢复。
+
 ## 工具
 
 - `cc_call`
@@ -114,6 +180,8 @@
 - `gemini_call`
 
 这些工具同样只是把任务转发给 worker，并依赖 callback 回投结果；它们不会替代 worker，也不会在插件进程里直接执行 CLI。
+
+现在 tool 路径和 slash command 路径在 worker 侧已经共享同一套任务协议。它们的区别是“谁发起任务”，不是“谁负责执行后端”。
 
 ## 已知限制
 
