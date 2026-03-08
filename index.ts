@@ -21,13 +21,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 // ---- 运行时配置（由 register() 从 pluginConfig 注入） ----
 let API_URL = "";
 let API_TOKEN = "";
 let CC_CHANNEL = "";
 let DISCORD_BOT_TOKEN = "";
-let SESSION_STORE_PATH = "/tmp/openclaw-cli-bridge-sessions.json";
+let SESSION_STORE_PATH = "/tmp/openclaw-cli-bridge-state.db";
+let sessionDb: DatabaseSync | null = null;
 
 type DispatchMode = "direct-command" | "agent-tool";
 
@@ -80,20 +82,71 @@ function buildTaskBody(
 const channelSessions = new Map<string, string>();
 const cliSessions = new Map<string, string>(); // "endpoint:channelKey" → sessionId
 
-function serializeMap(map: Map<string, string>) {
-  return Object.fromEntries(map.entries());
-}
-
-function saveSessionStore(log: { warn?: (msg: string) => void }) {
-  const data: SessionStoreData = {
-    version: 1,
-    channelSessions: serializeMap(channelSessions),
-    cliSessions: serializeMap(cliSessions),
-  };
+function getSessionDb(log: { warn?: (msg: string) => void }) {
+  if (sessionDb) return sessionDb;
 
   try {
     fs.mkdirSync(path.dirname(SESSION_STORE_PATH), { recursive: true });
-    fs.writeFileSync(SESSION_STORE_PATH, JSON.stringify(data, null, 2), "utf8");
+    sessionDb = new DatabaseSync(SESSION_STORE_PATH);
+    sessionDb.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        scope TEXT NOT NULL,
+        session_key TEXT NOT NULL,
+        session_value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, session_key)
+      );
+    `);
+    return sessionDb;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn?.(`[cli-bridge] session db open failed: ${message}`);
+    return null;
+  }
+}
+
+function importLegacyJsonStore(log: { warn?: (msg: string) => void; info?: (msg: string) => void }) {
+  try {
+    if (!fs.existsSync(SESSION_STORE_PATH)) return null;
+    const raw = fs.readFileSync(SESSION_STORE_PATH, "utf8");
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) return null;
+    const data = JSON.parse(trimmed) as Partial<SessionStoreData>;
+    const legacyBackup = `${SESSION_STORE_PATH}.legacy-json.bak`;
+    fs.renameSync(SESSION_STORE_PATH, legacyBackup);
+    log.info?.(`[cli-bridge] legacy session store migrated: ${legacyBackup}`);
+    return data;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn?.(`[cli-bridge] legacy session store import failed: ${message}`);
+    return null;
+  }
+}
+
+function saveSessionStore(log: { warn?: (msg: string) => void }) {
+  const db = getSessionDb(log);
+  if (!db) return;
+
+  try {
+    const now = Date.now();
+    const upsert = db.prepare(`
+      INSERT INTO sessions (scope, session_key, session_value, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(scope, session_key) DO UPDATE SET
+        session_value = excluded.session_value,
+        updated_at = excluded.updated_at
+    `);
+    const clearScope = db.prepare(`DELETE FROM sessions WHERE scope = ?`);
+
+    clearScope.run("cc");
+    for (const [key, value] of channelSessions.entries()) {
+      upsert.run("cc", key, value, now);
+    }
+
+    clearScope.run("cli");
+    for (const [key, value] of cliSessions.entries()) {
+      upsert.run("cli", key, value, now);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.warn?.(`[cli-bridge] session store save failed: ${message}`);
@@ -105,18 +158,40 @@ function loadSessionStore(log: { warn?: (msg: string) => void; info?: (msg: stri
   cliSessions.clear();
 
   try {
-    if (!fs.existsSync(SESSION_STORE_PATH)) return;
-    const raw = fs.readFileSync(SESSION_STORE_PATH, "utf8");
-    if (!raw.trim()) return;
-    const data = JSON.parse(raw) as Partial<SessionStoreData>;
+    const legacyData = importLegacyJsonStore(log);
+    const db = getSessionDb(log);
+    if (!db) return;
 
-    for (const [key, value] of Object.entries(data.channelSessions || {})) {
-      if (typeof value === "string" && value) channelSessions.set(key, value);
-    }
-    for (const [key, value] of Object.entries(data.cliSessions || {})) {
-      if (typeof value === "string" && value) cliSessions.set(key, value);
+    if (legacyData) {
+      const upsert = db.prepare(`
+        INSERT INTO sessions (scope, session_key, session_value, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(scope, session_key) DO UPDATE SET
+          session_value = excluded.session_value,
+          updated_at = excluded.updated_at
+      `);
+      const now = Date.now();
+      for (const [key, value] of Object.entries(legacyData.channelSessions || {})) {
+        if (typeof value === "string" && value) upsert.run("cc", key, value, now);
+      }
+      for (const [key, value] of Object.entries(legacyData.cliSessions || {})) {
+        if (typeof value === "string" && value) upsert.run("cli", key, value, now);
+      }
     }
 
+    const rows = db.prepare(`
+      SELECT scope, session_key, session_value
+      FROM sessions
+      ORDER BY updated_at ASC
+    `).all() as Array<{ scope: string; session_key: string; session_value: string }>;
+
+    for (const row of rows) {
+      if (row.scope === "cc") {
+        channelSessions.set(row.session_key, row.session_value);
+      } else if (row.scope === "cli") {
+        cliSessions.set(row.session_key, row.session_value);
+      }
+    }
     log.info?.(`[cli-bridge] session store loaded: cc=${channelSessions.size}, cli=${cliSessions.size}`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -503,7 +578,7 @@ export function register(pluginApi: any) {
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
   DISCORD_BOT_TOKEN = cfg.discordBotToken || "";
-  SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-sessions.json";
+  SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-state.db";
   loadSessionStore(log);
 
   if (!API_TOKEN) log.warn("[cli-bridge] ⚠ apiToken not configured — API calls will fail");

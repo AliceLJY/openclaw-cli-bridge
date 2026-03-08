@@ -138,7 +138,8 @@ Current defaults and behavior:
 - `apiToken` is required for successful task-api calls
 - `callbackChannel` is required if you want results delivered back to Discord
 - `discordBotToken` is optional but used for callback delivery when provided
-- `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-sessions.json` so channel-to-session mappings survive plugin restarts
+- `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-state.db` so channel-to-session mappings survive plugin restarts in a SQLite store
+- Legacy JSON stores at the same path are auto-migrated to SQLite on first load
 
 Example plugin config:
 
@@ -151,7 +152,7 @@ Example plugin config:
         "apiToken": "your-task-api-token",
         "callbackChannel": "your-discord-channel-id",
         "discordBotToken": "your-discord-bot-token",
-        "sessionStorePath": "/tmp/openclaw-cli-bridge-sessions.json"
+        "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
       }
     }
   }
@@ -188,7 +189,7 @@ The tool path and the slash-command path now share the same task protocol on the
 
 ## Known Limits
 
-- Session maps are now persisted to `sessionStorePath`, but they are still local file state rather than shared storage
+- Session maps are now persisted in a SQLite file at `sessionStorePath`, but they are still local single-instance state rather than shared storage
 - If multiple bridge instances run against the same channels, they will not coordinate session ownership
 - Results depend on worker callback delivery succeeding
 - This plugin does not replace `openclaw-worker`
