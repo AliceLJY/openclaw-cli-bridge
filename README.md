@@ -2,26 +2,38 @@
 
 **English** | [简体中文](README_CN.md)
 
+Docker-first command entry plane for OpenClaw-compatible local CLI execution. The control plane can run in Docker or on a remote OpenClaw host, while this plugin routes user commands into `openclaw-worker` on the machine that actually owns Claude Code, Codex, Gemini, files, and local session state.
+
 ## Project Positioning
 
-This repository is an OpenClaw plugin, not a standalone service.
+This repository should not be described as a standalone AI service.
+
+It is the command entry plane in the Docker-first product line:
+
+- `openclaw-cli-bridge` = user-facing command entry
+- `openclaw-worker` = execution plane
+- host-side Claude Code / Codex / Gemini = actual local capability
 
 It does not execute Claude Code, Codex CLI, or Gemini CLI by itself. The plugin only registers commands inside OpenClaw and forwards tasks to a separate `task-api` worker. Without OpenClaw, `openclaw-worker`, and locally installed AI CLIs, this repository is just one piece of the workflow.
 
-This plugin is only tested in my own OpenClaw + Docker + local worker setup.
+Practical deployment story:
+
+- Run OpenClaw locally in Docker and use this plugin as the bridge into your host runner
+- Or run OpenClaw on a remote server and still use this plugin to route into a remote or local runner
+- Keep real execution on the machine that owns the CLI, files, shell, and browser context
 
 ## What It Does
 
 - Registers `/cc`, `/codex`, `/gemini`, and related session commands inside OpenClaw
 - Forwards requests to `openclaw-worker` task-api endpoints such as `/claude`, `/codex`, and `/gemini`
 - Uses callback delivery so results are pushed back to Discord without agent rewriting
-- Tracks per-channel session continuation in plugin memory
+- Persists per-channel session continuation in a local SQLite bridge store
 - Carries one worker protocol for two interaction modes: direct commands and agent delegation
 
 ## Tested Environment
 
-- OpenClaw bot running in Docker
-- Local `openclaw-worker` task-api running on the host machine
+- OpenClaw bot running in Docker or on a remote host
+- `openclaw-worker` task-api running on the host machine that owns the local CLI tools
 - Claude Code / Codex CLI / Gemini CLI installed locally
 - Discord callback flow tested in my own server and channel setup
 
@@ -46,6 +58,15 @@ This plugin is only tested in my own OpenClaw + Docker + local worker setup.
 - Authenticated task submission requires a valid `apiToken`
 - Session continuation only works when the worker-side CLI can resume from the same working directory and session storage layout
 
+## Deployment Modes
+
+| Mode | What runs where | Notes |
+|------|------------------|-------|
+| Docker Local | OpenClaw in Docker, `openclaw-worker` on the same host | Best fit for single-machine self-hosting |
+| Docker + Remote Runner | OpenClaw in Docker, worker on another machine | Best fit when Docker is the product shell but execution must stay near the real machine |
+| Cloud + Remote Runner | OpenClaw on a remote server, worker on the host with the real CLI/files | Main remote-control pattern |
+| Single Host | OpenClaw and worker both outside Docker | Possible, but not the primary product story |
+
 ## Prerequisites
 
 - OpenClaw
@@ -58,6 +79,24 @@ This plugin is only tested in my own OpenClaw + Docker + local worker setup.
 ## Installation
 
 Install this repository as an OpenClaw plugin in your OpenClaw deployment, then make sure the worker task-api is reachable from the bot container.
+
+Minimal plugin config:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "cli-bridge": {
+        "apiUrl": "http://host.docker.internal:3456",
+        "apiToken": "your-task-api-token",
+        "callbackChannel": "your-discord-channel-id",
+        "discordBotToken": "your-discord-bot-token",
+        "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
+      }
+    }
+  }
+}
+```
 
 ## Quick Usage
 
@@ -145,24 +184,6 @@ Current defaults and behavior:
 - `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-state.db` so channel-to-session mappings survive plugin restarts in a SQLite store
 - Legacy JSON stores at the same path are auto-migrated to SQLite on first load
 
-Example plugin config:
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "cli-bridge": {
-        "apiUrl": "http://host.docker.internal:3456",
-        "apiToken": "your-task-api-token",
-        "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token",
-        "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
-      }
-    }
-  }
-}
-```
-
 ## Commands
 
 - `/cc <prompt>`
@@ -197,6 +218,18 @@ These tools also forward to the worker and rely on callback delivery. They do no
 The tool path and the slash-command path now share the same task protocol on the worker side. The difference is who initiates the task, not which backend executes it.
 
 The new `cli_bridge_state` tool and `/cli-state` command are read-only inspection surfaces for current session bindings. They exist so you can debug session continuity without mutating anything.
+
+## State Model
+
+- The bridge persists channel-to-session bindings in `sessionStorePath`
+- The worker persists tasks, active sessions, and events in its own state store
+- The runner on the host keeps provider-specific cache/state as needed for local resume behavior
+
+These layers are complementary:
+
+- Bridge state = channel-to-session routing view
+- Worker state = execution-plane and callback view
+- Runner cache = host-local provider recovery view
 
 ## Known Limits
 
