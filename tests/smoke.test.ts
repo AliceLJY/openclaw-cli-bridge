@@ -40,9 +40,9 @@ describe("index.ts", () => {
   });
 
   test("session store defaults to persistent path (not /tmp)", () => {
-    // Verify the default is no longer /tmp/
-    expect(src).not.toContain('= "/tmp/openclaw-cli-bridge-state.db"');
-    expect(src).toContain(".openclaw-cli-bridge");
+    // Both the init declaration and the runtime fallback must use the persistent path
+    expect(src).not.toContain('"/tmp/openclaw-cli-bridge-state.db"');
+    expect(src).toContain('.openclaw-cli-bridge", "state.db"');
   });
 
   test("session store respects config and env override", () => {

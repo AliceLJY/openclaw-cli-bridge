@@ -634,7 +634,7 @@ export function register(pluginApi: any) {
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
   CALLBACK_BOT_TOKEN = cfg.callbackBotToken || "";
-  SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-state.db";
+  SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || path.join(process.env.HOME || "/tmp", ".openclaw-cli-bridge", "state.db");
   loadSessionStore(log);
 
   if (!API_TOKEN) log.warn("[cli-bridge] ⚠ apiToken not configured — API calls will fail");
