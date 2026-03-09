@@ -668,7 +668,7 @@ export function register(pluginApi: any) {
   API_URL = cfg.apiUrl || "http://host.docker.internal:3456";
   API_TOKEN = cfg.apiToken || "";
   CC_CHANNEL = cfg.callbackChannel || cfg.defaultChannel || "";
-  CALLBACK_BOT_TOKEN = cfg.callbackBotToken || cfg.discordBotToken || "";
+  CALLBACK_BOT_TOKEN = cfg.callbackBotToken || "";
   SESSION_STORE_PATH = cfg.sessionStorePath || process.env.CLI_BRIDGE_SESSION_STORE || "/tmp/openclaw-cli-bridge-state.db";
   loadSessionStore(log);
 

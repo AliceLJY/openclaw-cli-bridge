@@ -26,10 +26,6 @@
         "type": "string",
         "description": "Bot token used for callback delivery when the worker needs to post results back through a bot identity"
       },
-      "discordBotToken": {
-        "type": "string",
-        "description": "Legacy alias for callbackBotToken. Kept for backward compatibility with older Discord-first configs."
-      },
       "sessionStorePath": {
         "type": "string",
         "default": "~/.openclaw-cli-bridge/state.db",

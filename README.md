@@ -26,7 +26,7 @@ Practical deployment story:
 
 - Registers `/cc`, `/codex`, `/gemini`, and related session commands inside OpenClaw
 - Forwards requests to `openclaw-worker` task-api endpoints such as `/claude`, `/codex`, and `/gemini`
-- Uses callback delivery so results are pushed back to Discord without agent rewriting
+- Uses callback delivery so results are pushed back to the bot side without agent rewriting
 - Persists per-channel session continuation in a local SQLite bridge store
 - Carries one worker protocol for two interaction modes: direct commands and agent delegation
 
@@ -35,7 +35,7 @@ Practical deployment story:
 - OpenClaw bot running in Docker or on a remote host
 - `openclaw-worker` task-api running on the host machine that owns the local CLI tools
 - Claude Code / Codex CLI / Gemini CLI installed locally
-- Discord callback flow tested in my own server and channel setup
+- Callback flow tested in my own bot and channel setup, including Discord-first deployments
 
 ## Compatibility Notes
 
@@ -73,7 +73,7 @@ Practical deployment story:
 - `openclaw-worker`
 - Locally installed Claude Code, Codex CLI, and/or Gemini CLI on the worker machine
 - Docker-to-host connectivity if using the default `host.docker.internal` topology
-- A Discord bot/channel setup that can receive worker callbacks
+- A bot/channel setup that can receive worker callbacks
 - Matching worker-side working directory conventions if you want reliable CLI resume behavior
 
 ## Installation
@@ -89,8 +89,8 @@ Minimal plugin config:
       "cli-bridge": {
         "apiUrl": "http://host.docker.internal:3456",
         "apiToken": "your-task-api-token",
-        "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token",
+        "callbackChannel": "your-callback-channel-id",
+        "callbackBotToken": "your-bot-token",
         "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
       }
     }
@@ -172,15 +172,15 @@ Supported fields:
 - `apiUrl`
 - `apiToken`
 - `callbackChannel`
-- `discordBotToken`
+- `callbackBotToken`
 - `sessionStorePath`
 
 Current defaults and behavior:
 
 - `apiUrl` defaults to `http://host.docker.internal:3456`
 - `apiToken` is required for successful task-api calls
-- `callbackChannel` is required if you want results delivered back to Discord
-- `discordBotToken` is optional but used for callback delivery when provided
+- `callbackChannel` is required if you want results delivered back to the bot side
+- `callbackBotToken` is the callback delivery identity token
 - `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-state.db` so channel-to-session mappings survive plugin restarts in a SQLite store
 - Legacy JSON stores at the same path are auto-migrated to SQLite on first load
 

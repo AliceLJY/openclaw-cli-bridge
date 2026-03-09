@@ -26,7 +26,7 @@
 
 - 在 OpenClaw 里注册 `/cc`、`/codex`、`/gemini` 及相关会话命令
 - 把请求转发到 `openclaw-worker` 的 `/claude`、`/codex`、`/gemini` 等 task-api 接口
-- 通过 callback 机制把结果直接推回 Discord，避免 agent 改写
+- 通过 callback 机制把结果直接推回 Bot 侧，避免 agent 改写
 - 用本地 SQLite bridge store 持久化频道到 session 的映射
 - 用同一套 worker 协议承接两种交互模式：直连命令和 agent 委托
 
@@ -35,7 +35,7 @@
 - 运行在 Docker 或远端主机上的 OpenClaw bot
 - 运行在真正拥有本地 CLI 工具的宿主机上的 `openclaw-worker` task-api
 - 本地已安装的 Claude Code / Codex CLI / Gemini CLI
-- 在我自己的 Discord 服务器和频道配置中验证过 callback 流程
+- 在我自己的 Bot / 频道配置中验证过 callback 流程，包含 Discord-first 部署
 
 ## 兼容性说明
 
@@ -73,7 +73,7 @@
 - `openclaw-worker`
 - 在 worker 所在机器本地安装 Claude Code、Codex CLI 和/或 Gemini CLI
 - 如果沿用默认拓扑，需要可用的 Docker 到宿主机网络连通
-- 可以接收 worker callback 的 Discord bot / channel 配置
+- 可以接收 worker callback 的 bot / channel 配置
 - 如果你要稳定使用 CLI 接续，需要 worker 侧保持一致的工作目录约定
 
 ## 安装
@@ -89,8 +89,8 @@
       "cli-bridge": {
         "apiUrl": "http://host.docker.internal:3456",
         "apiToken": "your-task-api-token",
-        "callbackChannel": "your-discord-channel-id",
-        "discordBotToken": "your-discord-bot-token",
+        "callbackChannel": "your-callback-channel-id",
+        "callbackBotToken": "your-bot-token",
         "sessionStorePath": "/tmp/openclaw-cli-bridge-state.db"
       }
     }
@@ -172,15 +172,15 @@
 - `apiUrl`
 - `apiToken`
 - `callbackChannel`
-- `discordBotToken`
+- `callbackBotToken`
 - `sessionStorePath`
 
 当前默认值和行为：
 
 - `apiUrl` 默认是 `http://host.docker.internal:3456`
 - `apiToken` 没有配置时，task-api 调用会失败
-- `callbackChannel` 没有配置时，结果无法正常回投到 Discord
-- `discordBotToken` 不是必填，但提供后会用于 callback 投递
+- `callbackChannel` 没有配置时，结果无法正常回投到 Bot 侧
+- `callbackBotToken` 是 callback 身份配置的字段
 - `sessionStorePath` 默认是 `/tmp/openclaw-cli-bridge-state.db`，用于把频道到 session 的映射持久化到 SQLite，插件重启后继续保留
 - 如果同一路径下之前是旧 JSON store，插件第一次加载时会自动迁移到 SQLite
 
