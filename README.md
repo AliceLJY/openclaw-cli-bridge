@@ -181,8 +181,7 @@ Current defaults and behavior:
 - `apiToken` is required for successful task-api calls
 - `callbackChannel` is required if you want results delivered back to the bot side
 - `callbackBotToken` is the callback delivery identity token
-- `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-state.db` so channel-to-session mappings survive plugin restarts in a SQLite store
-- Legacy JSON stores at the same path are auto-migrated to SQLite on first load
+- `sessionStorePath` defaults to `/tmp/openclaw-cli-bridge-state.db` so channel-to-session mappings survive plugin restarts
 
 ## Commands
 
@@ -217,7 +216,7 @@ These tools also forward to the worker and rely on callback delivery. They do no
 
 The tool path and the slash-command path now share the same task protocol on the worker side. The difference is who initiates the task, not which backend executes it.
 
-The new `cli_bridge_state` tool and `/cli-state` command are read-only inspection surfaces for current session bindings. They exist so you can debug session continuity without mutating anything.
+The `cli_bridge_state` tool and `/cli-state` command are internal diagnostics for inspecting current session bindings. Useful for debugging session continuity issues.
 
 ## State Model
 

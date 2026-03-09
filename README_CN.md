@@ -181,8 +181,7 @@
 - `apiToken` 没有配置时，task-api 调用会失败
 - `callbackChannel` 没有配置时，结果无法正常回投到 Bot 侧
 - `callbackBotToken` 是 callback 身份配置的字段
-- `sessionStorePath` 默认是 `/tmp/openclaw-cli-bridge-state.db`，用于把频道到 session 的映射持久化到 SQLite，插件重启后继续保留
-- 如果同一路径下之前是旧 JSON store，插件第一次加载时会自动迁移到 SQLite
+- `sessionStorePath` 默认是 `/tmp/openclaw-cli-bridge-state.db`，用于把频道到 session 的映射持久化，插件重启后继续保留
 
 ## 命令
 

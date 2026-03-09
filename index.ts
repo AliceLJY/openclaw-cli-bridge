@@ -111,23 +111,6 @@ function getSessionDb(log: { warn?: (msg: string) => void }) {
   }
 }
 
-function importLegacyJsonStore(log: { warn?: (msg: string) => void; info?: (msg: string) => void }) {
-  try {
-    if (!fs.existsSync(SESSION_STORE_PATH)) return null;
-    const raw = fs.readFileSync(SESSION_STORE_PATH, "utf8");
-    const trimmed = raw.trim();
-    if (!trimmed.startsWith("{")) return null;
-    const data = JSON.parse(trimmed) as Partial<SessionStoreData>;
-    const legacyBackup = `${SESSION_STORE_PATH}.legacy-json.bak`;
-    fs.renameSync(SESSION_STORE_PATH, legacyBackup);
-    log.info?.(`[cli-bridge] legacy session store migrated: ${legacyBackup}`);
-    return data;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    log.warn?.(`[cli-bridge] legacy session store import failed: ${message}`);
-    return null;
-  }
-}
 
 function saveSessionStore(log: { warn?: (msg: string) => void }) {
   const db = getSessionDb(log);
@@ -164,26 +147,8 @@ function loadSessionStore(log: { warn?: (msg: string) => void; info?: (msg: stri
   cliSessions.clear();
 
   try {
-    const legacyData = importLegacyJsonStore(log);
     const db = getSessionDb(log);
     if (!db) return;
-
-    if (legacyData) {
-      const upsert = db.prepare(`
-        INSERT INTO sessions (scope, session_key, session_value, updated_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(scope, session_key) DO UPDATE SET
-          session_value = excluded.session_value,
-          updated_at = excluded.updated_at
-      `);
-      const now = Date.now();
-      for (const [key, value] of Object.entries(legacyData.channelSessions || {})) {
-        if (typeof value === "string" && value) upsert.run("cc", key, value, now);
-      }
-      for (const [key, value] of Object.entries(legacyData.cliSessions || {})) {
-        if (typeof value === "string" && value) upsert.run("cli", key, value, now);
-      }
-    }
 
     const rows = db.prepare(`
       SELECT scope, session_key, session_value
